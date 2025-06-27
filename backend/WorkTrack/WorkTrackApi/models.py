@@ -4,6 +4,8 @@ from django.core.validators import RegexValidator, MaxValueValidator, MinValueVa
 from django.core.exceptions import ValidationError
 from datetime import datetime
 from decimal import Decimal
+
+
 class Employees(AbstractUser):
     personal_number=models.CharField(max_length=3, 
                                      unique=True,
@@ -26,7 +28,7 @@ class Employees(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.personal_number})"
 
-
+"""Types of shifts all shifts are fixed"""
 class TypeShift(models.Model):
     nameShift=models.CharField(max_length=20,
                                unique=True,
@@ -42,3 +44,15 @@ class TypeShift(models.Model):
     def clean(self):
         if self.end_time <= self.start_time:
             raise ValidationError("Koniec smeny musí byť neskôr ako začiatok.")
+        
+
+class Attendance(models.Model):
+    user= models.ForeignKey(Employees, on_delete=models.CASCADE)
+    date = models.DateField()
+    type_shift= models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
+    custom_start= models.TimeField(null=True, blank=True)
+    custom_end= models.TimeField(null=True,blank=True)
+    note= models.TextField(blank=True)
+
+    class Meta:
+        unique_together=('user', 'date')

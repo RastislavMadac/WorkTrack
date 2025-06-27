@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import Employees, TypeShift
+from .models import Employees, TypeShift,Attendance
 
 @admin.register(Employees)
 class EmployeesAdmin(UserAdmin):
@@ -38,3 +38,9 @@ class TypeShiftAdmin(admin.ModelAdmin):
     )
     list_display = ("nameShift", "start_time", "end_time", "duration_time")
     search_fields = ("nameShift",)
+
+@admin.register(Attendance)
+class AttendanceAdmin(admin.ModelAdmin):
+    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end')
+    list_filter = ('user', 'type_shift')
+    search_fields = ('user__username', 'note')
