@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import Employees, TypeShift,Attendance
+from .models import Employees, TypeShift,Attendance, PlannedShifts
 
 @admin.register(Employees)
 class EmployeesAdmin(UserAdmin):
@@ -44,3 +44,14 @@ class AttendanceAdmin(admin.ModelAdmin):
     list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end')
     list_filter = ('user', 'type_shift')
     search_fields = ('user__username', 'note')
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Zavolaj logiku nočnej smeny po uložení záznamu
+        obj.handle_night_shift()
+
+@admin.register(PlannedShifts)
+class PlannedShiftsAdmin(admin.ModelAdmin):
+    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'is_changed', 'change_reason')
+    list_filter = ('user', 'type_shift')
+    

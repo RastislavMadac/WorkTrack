@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Employees, TypeShift,Attendance
+from .models import Employees, TypeShift,Attendance, PlannedShifts
 
 
 class EmployeesSerializer(serializers.ModelSerializer):
@@ -27,3 +27,11 @@ class AttendanceSerializer(serializers.ModelSerializer):
             if value and value != request_user:
                 raise serializers.ValidationError("Nemáte oprávnenie nastaviť iného používateľa.")
         return value
+    
+    
+
+class PlannedShiftsSerializer(serializers.ModelSerializer):
+   
+    class Meta:
+        model = PlannedShifts
+        fields = ['id', 'user', 'date', 'type_shift', 'custom_start', 'custom_end', 'note', 'is_changed', 'change_reason' ]
