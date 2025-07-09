@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import Employees, TypeShift,Attendance, PlannedShifts
+from .models import Employees, TypeShift,Attendance, PlannedShifts, CalendarDay
 
 @admin.register(Employees)
 class EmployeesAdmin(UserAdmin):
@@ -73,4 +73,9 @@ class PlannedShiftsAdmin(admin.ModelAdmin):
     exclude = ('custom_start', 'custom_end')
     list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'transferred', 'is_changed', 'change_reason')
     list_filter = ('user', 'type_shift')
-    
+
+@admin.register(CalendarDay)
+class CalendarDayAdmin(admin.ModelAdmin):
+    list_display = ("date", "day", "is_weekend", "is_holiday", "holiday_name")
+    list_filter = ("is_weekend", "is_holiday")
+    search_fields = ("day", "holiday_name")

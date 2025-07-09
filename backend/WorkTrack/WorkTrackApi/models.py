@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from datetime import date, datetime, timedelta, time
 import threading
+import calendar
 
 _thread_locals = threading.local()
 
@@ -71,6 +72,8 @@ class Attendance(models.Model):
                 help_text="Pôvodná smena kolegu, ktorú zamestnanec prebral",
             )
 
+    
+    calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="attendances",null=True, blank=True)
     # class Meta:
     #     unique_together=('user', 'date')
 
@@ -300,7 +303,8 @@ class PlannedShifts(models.Model):
     transferred = models.BooleanField(default=False)
     is_changed = models.BooleanField(default=False)
     change_reason = models.CharField(max_length=255, blank=True, null=True)
-
+    calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="planned_shifts",null=True, blank=True)
+   
     class Meta:
       unique_together = ('user', 'date', 'custom_start', 'custom_end')
 
@@ -310,13 +314,26 @@ class PlannedShifts(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             orig = PlannedShifts.objects.get(pk=self.pk)
-
+            # Kontrola zmien časov
             if orig.custom_start and self.custom_start and self.custom_start != orig.custom_start:
                 raise ValidationError("Zmena časov plánovanej smeny nie je povolená (začiatok).")
 
             if orig.custom_end and self.custom_end and self.custom_end != orig.custom_end:
                 raise ValidationError("Zmena časov plánovanej smeny nie je povolená (koniec).")
+            # ⚠️ Skontroluj, či sa zmenil dátum a nastav calendar_day nanovo
+            if self.date != orig.date:
+                try:
+                    self.calendar_day = CalendarDay.objects.get(date=self.date)
+                except CalendarDay.DoesNotExist:
+                    raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
 
+        else:
+            # Vytváranie novej smeny
+            if not self.calendar_day and self.date:
+                try:
+                    self.calendar_day = CalendarDay.objects.get(date=self.date)
+                except CalendarDay.DoesNotExist:
+                    raise ValidationError(f"CalendarDay pre dátum {self.date} neexistuje.")
 
          # ⏰ Doplnenie časov zo smeny (iba pri vytváraní)
         if self.type_shift:
@@ -325,6 +342,17 @@ class PlannedShifts(models.Model):
             if not self.custom_end:
                 self.custom_end = self.type_shift.end_time
 
+                  
+
+        # Potom môžeš overiť, či je daný deň sviatok alebo víkend
+        if self.calendar_day:
+            print(f"Calendar day: {self.calendar_day.date}, sviatok: {self.calendar_day.is_holiday}, víkend: {self.calendar_day.is_weekend}")
+            if self.calendar_day.is_holiday:
+            # sprav niečo, ak je sviatok
+                print("Toto je sviatok")
+            elif self.calendar_day.is_weekend:
+            # sprav niečo, ak je víkend
+                print("Toto je víkend")
         # 🕒 Validácia
         if self.custom_start and self.custom_end:
             start = datetime.combine(date.today(), self.custom_start)
@@ -337,3 +365,93 @@ class PlannedShifts(models.Model):
     
         # 💾 Ulož záznam
         super().save(*args, **kwargs)
+        print(f"Ukladám PlannedShift pre dátum {self.date}")
+
+class CalendarDay(models.Model):
+    date = models.DateField(unique=True)
+    day = models.CharField(max_length=20)
+    is_weekend = models.BooleanField(default=False)
+    is_holiday = models.BooleanField(default=False)
+    holiday_name = models.CharField(max_length=100, blank=True, null=True)  
+
+    def __str__(self):
+        return f"{self.date} ({self.day})"
+
+    @staticmethod
+    def get_easter_sunday(year):
+        "Výpočet dátumu Veľkonočnej nedele podľa algoritmu (Computus)"
+        a = year % 19
+        b = year // 100
+        c = year % 100
+        d = b // 4
+        e = b % 4
+        f = (b + 8) // 25
+        g = (b - f + 1) // 3
+        h = (19 * a + b - d - g + 15) % 30
+        i = c // 4
+        k = c % 4
+        l = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * l) // 451
+        month = (h + l - 7 * m + 114) // 31
+        day = ((h + l - 7 * m + 114) % 31) + 1
+        return date(year, month, day)
+
+    @staticmethod
+    def get_slovak_holidays(year):
+        "Vráti zoznam sviatkov vo forme [(dátum, názov)]"
+        fixed = [
+            (1, 1, "Deň vzniku SR"),
+            (1, 6, "Zjavenie Pána"),
+            (5, 1, "Sviatok práce"),
+            (5, 8, "Deň víťazstva nad fašizmom"),
+            (7, 5, "Sviatok sv. Cyrila a Metoda"),
+            (8, 29, "Výročie SNP"),
+            (9, 1, "Deň Ústavy SR"),
+            (9, 15, "Sedembolestná Panna Mária"),
+            (11, 1, "Sviatok všetkých svätých"),
+            (11, 17, "Deň boja za slobodu a demokraciu"),
+            (12, 24, "Štedrý deň"),
+            (12, 25, "1. sviatok vianočný"),
+            (12, 26, "2. sviatok vianočný"),
+        ]
+        movable = []
+        easter = CalendarDay.get_easter_sunday(year)
+        movable.append((easter - timedelta(days=2), "Veľký piatok"))
+        movable.append((easter + timedelta(days=1), "Veľkonočný pondelok"))
+
+        return [(date(year, m, d), name) for m, d, name in fixed] + movable
+
+    @classmethod
+    def generate_calendar(cls, start_year, end_year):
+        """
+        Vygeneruje dni v kalendári pre dané roky, vrátane sviatkov.
+        """
+        for year in range(start_year, end_year + 1):
+            holidays = dict(cls.get_slovak_holidays(year))
+
+            d = date(year, 1, 1)
+            while d.year == year:
+                weekday_name = calendar.day_name[d.weekday()]
+                is_weekend = weekday_name in ["Saturday", "Sunday"]
+                is_holiday = d in holidays
+                holiday_name = holidays.get(d, "")
+
+                obj, created = cls.objects.get_or_create(
+                    date=d,
+                    defaults={
+                         "day": weekday_name,
+                        "is_weekend": is_weekend,
+                        "is_holiday": is_holiday,
+                        "holiday_name": holiday_name
+                    }
+                )
+
+                if not created:
+                    # aktualizuj ak sa zmenilo
+                    obj.day = weekday_name
+                    obj.is_weekend = is_weekend
+                    obj.is_holiday = is_holiday
+                    obj.holiday_name = holiday_name
+                    obj.save()
+
+                d += timedelta(days=1)
