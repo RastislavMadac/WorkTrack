@@ -41,17 +41,36 @@ class TypeShiftAdmin(admin.ModelAdmin):
 
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end')
-    list_filter = ('user', 'type_shift')
+    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end', 'note', 'exchanged_with')
+    list_filter = ('user', 'type_shift','exchanged_with')
     search_fields = ('user__username', 'note')
 
     def save_model(self, request, obj, form, change):
+    # Zaokrúhli custom_start a custom_end pred uložením
+        if obj.custom_start:
+            obj.custom_start = obj.round_to_nearest_half_hour(obj.custom_start)
+        if obj.custom_end:
+            obj.custom_end = obj.round_to_nearest_half_hour(obj.custom_end)
+
+        # Ulož objekt
         super().save_model(request, obj, form, change)
-        # Zavolaj logiku nočnej smeny po uložení záznamu
+
+        print("Volám handle_night_shift()")
         obj.handle_night_shift()
+
+        print("Volám handle_any_shift_time()")
+        Attendance.handle_any_shift_time()
+
+        print("Volam")
+
+        # Ak je nastavené exchanged_with, spusti výmenu smien
+        if obj.exchanged_with:
+            obj.exchange_shift(obj.exchanged_with)
+    
 
 @admin.register(PlannedShifts)
 class PlannedShiftsAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'is_changed', 'change_reason')
+    exclude = ('custom_start', 'custom_end')
+    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'transferred', 'is_changed', 'change_reason')
     list_filter = ('user', 'type_shift')
     

@@ -66,9 +66,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             return Attendance.objects.filter(user=user)
         return Attendance.objects.all()
 
-
-
-
     
 
     def perform_create(self, serializer):
@@ -81,6 +78,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         # Zavoláme metódu z modelu
         instance.handle_night_shift()
+        Attendance.handle_any_shift_time()
 
        
     
