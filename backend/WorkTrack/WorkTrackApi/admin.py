@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import Employees, TypeShift,Attendance, PlannedShifts, CalendarDay
+from .models import Employees, TypeShift,Attendance, PlannedShifts, CalendarDay, ChangeReason
 
 @admin.register(Employees)
 class EmployeesAdmin(UserAdmin):
@@ -32,7 +32,7 @@ class EmployeesAdmin(UserAdmin):
 class TypeShiftAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {
-            "fields": ("nameShift", "start_time", "end_time", "duration_time"),
+            "fields": ("nameShift", "start_time", "end_time", "duration_time",'allow_variable_time'),
             "description": _("Zadaj údaje o smene"),
         }),
     )
@@ -41,7 +41,7 @@ class TypeShiftAdmin(admin.ModelAdmin):
 
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end', 'note', 'exchanged_with')
+    list_display = ('user', 'date', 'type_shift', 'custom_start','planned_shift', 'custom_end', 'note', 'exchanged_with')
     list_filter = ('user', 'type_shift','exchanged_with')
     search_fields = ('user__username', 'note')
 
@@ -71,7 +71,7 @@ class AttendanceAdmin(admin.ModelAdmin):
 @admin.register(PlannedShifts)
 class PlannedShiftsAdmin(admin.ModelAdmin):
     exclude = ('custom_start', 'custom_end')
-    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'transferred', 'is_changed', 'change_reason')
+    list_display = ('user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'transferred', 'is_changed','hidden', 'change_reason')
     list_filter = ('user', 'type_shift')
 
 @admin.register(CalendarDay)
@@ -79,3 +79,8 @@ class CalendarDayAdmin(admin.ModelAdmin):
     list_display = ("date", "day", "is_weekend", "is_holiday", "holiday_name")
     list_filter = ("is_weekend", "is_holiday")
     search_fields = ("day", "holiday_name")
+
+@admin.register(ChangeReason)
+class ChangeReasonAdmin(admin.ModelAdmin):
+    list_display = ("name", "description", "category")
+   

@@ -16,10 +16,14 @@ class AttendanceSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(
         queryset=Employees.objects.all(), required=False
     )
+    planned_shift = serializers.PrimaryKeyRelatedField(
+        queryset=PlannedShifts.objects.filter(hidden=False)
+    )
+    date = serializers.DateField(required=False, allow_null=True)
 
     class Meta:
         model = Attendance
-        fields = ['id', 'user', 'date', 'type_shift', 'custom_start', 'custom_end', 'note']
+        exclude = []
 
     def validate_user(self, value):
         request_user = self.context['request'].user
@@ -27,8 +31,15 @@ class AttendanceSerializer(serializers.ModelSerializer):
             if value and value != request_user:
                 raise serializers.ValidationError("Nemáte oprávnenie nastaviť iného používateľa.")
         return value
-    
-    
+
+    def create(self, validated_data):
+        planned_shift = validated_data.get('planned_shift', None)
+
+        if planned_shift:
+            validated_data['date'] = planned_shift.date
+
+        return super().create(validated_data)
+
 
 class PlannedShiftsSerializer(serializers.ModelSerializer):
    

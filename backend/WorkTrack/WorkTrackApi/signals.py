@@ -27,11 +27,9 @@ def unmark_planned_shift_transferred_on_delete(sender, instance, **kwargs):
     nastaví `transferred = False` v plánovanej smene.
     """
     if not Attendance.objects.filter(user=instance.user, date=instance.date).exists():
-        try:
-            planned = PlannedShifts.objects.get(user=instance.user, date=instance.date)
+        planned_shifts = PlannedShifts.objects.filter(user=instance.user, date=instance.date)
+        for planned in planned_shifts:
             if planned.transferred:
                 planned.transferred = False
                 planned.save(update_fields=["transferred"])
                 print(f"🔴 Prenos zrušený: transferred=False pre {instance.user} {instance.date}")
-        except PlannedShifts.DoesNotExist:
-            pass

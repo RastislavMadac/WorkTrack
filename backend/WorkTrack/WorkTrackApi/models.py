@@ -37,31 +37,45 @@ class Employees(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.personal_number})"
 
-"""Types of shifts all shifts are fixed"""
+
+
 class TypeShift(models.Model):
-    nameShift=models.CharField(max_length=50)
-    start_time=models.TimeField(max_length=4)
-    end_time=models.TimeField(max_length=4)
-    duration_time=models.DecimalField(max_digits=4, decimal_places=2, validators=[
-         MinValueValidator(Decimal("0.5"), message="Trvanie musí byť aspoň 0.5 hodiny"),
-        MaxValueValidator(Decimal("24.0"), message="Trvanie nemôže byť viac ako 24 hodín")
-    ])
+    nameShift = models.CharField(max_length=50)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    duration_time = models.DecimalField(
+        max_digits=4, decimal_places=2,
+        validators=[
+            MinValueValidator(Decimal("0.5"), message="Trvanie musí byť aspoň 0.5 hodiny"),
+            MaxValueValidator(Decimal("24.0"), message="Trvanie nemôže byť viac ako 24 hodín")
+        ]
+    )
+    allow_variable_time = models.BooleanField(
+        default=False,
+        help_text="Ak je zapnuté, zamestnanec môže prísť a odísť kedykoľvek (napr. flexibilná smena)."
+    )
 
     def __str__(self):
         return self.nameShift
-    
-    
-   
+
     def clean(self):
-        if self.end_time <= self.start_time:
-            raise ValidationError("Koniec smeny musí byť neskôr ako začiatok.")
-        
+        if not self.allow_variable_time:
+            if self.end_time <= self.start_time:
+                raise ValidationError("Koniec smeny musí byť neskôr ako začiatok.")
 
 """emploee time at work"""
 class Attendance(models.Model):
     user= models.ForeignKey(Employees, on_delete=models.CASCADE)
     date = models.DateField()
     type_shift= models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
+    planned_shift = models.ForeignKey('WorkTrackApi.PlannedShifts',
+    null=True,
+    blank=True,
+    on_delete=models.SET_NULL,
+    help_text="Vybraná plánovaná smena, z ktorej sa preberajú časy",
+    related_name="attendances_as_planned"
+)
+
     custom_start= models.TimeField(null=True, blank=True)
     custom_end= models.TimeField(null=True,blank=True)
     note= models.TextField(blank=True)
@@ -70,6 +84,7 @@ class Attendance(models.Model):
                 blank=True,
                 on_delete=models.SET_NULL,
                 help_text="Pôvodná smena kolegu, ktorú zamestnanec prebral",
+                related_name="attendances_as_exchanged_with"
             )
 
     
@@ -127,97 +142,106 @@ class Attendance(models.Model):
     #  """PREPISUJE NOVE CASY V PLANNED SHIFT"""   
     @classmethod
     def handle_any_shift_time(cls):
-        print("Spúšťam handle_any_shift_time...")
-
         set_force_shift_times(True)
-        type_shift_id = 22
-        changed_shift = TypeShift.objects.get(id=type_shift_id)
+        try:
+            change_reason_obj = ChangeReason.objects.filter(category="cdr").first()
+            if not change_reason_obj:
+                print("⚠️ Chýba ChangeReason pre 'skorší príchod' s kategóriou 'absence'")
 
-        for plan in PlannedShifts.objects.all():
-            try:
-                att = cls.objects.filter(user=plan.user, date=plan.date).order_by('id').first()
-                if not att:
+            print("Spúšťam handle_any_shift_time...")
+
+            type_shift_id = 22
+            changed_shift = TypeShift.objects.get(id=type_shift_id)
+
+            # Spracovávame len plánované smeny, ktoré nie sú skryté
+            for plan in PlannedShifts.objects.filter(hidden=False):
+                try:
+                    att = cls.objects.filter(
+                        user=plan.user,
+                        date=plan.date
+                    ).filter(
+                        models.Q(exchanged_with__isnull=True) | models.Q(exchanged_with__hidden=False)
+                    ).order_by('id').first()
+
+                    if not att:
+                        continue
+
+                    changed = False
+
+                    # Skorší príchod
+                    if att.custom_start and plan.custom_start and att.custom_start < plan.custom_start:
+                        try:
+                            cls.objects.create(
+                                user=plan.user,
+                                date=plan.date,
+                                custom_start=att.custom_start,
+                                custom_end=plan.custom_start,
+                                type_shift=changed_shift,
+                                note="Skorší príchod "
+                            )
+                            PlannedShifts.objects.create(
+                                user=plan.user,
+                                date=plan.date,
+                                custom_start=att.custom_start,
+                                custom_end=plan.custom_start,
+                                type_shift=changed_shift,
+                                transferred=True,
+                                is_changed=True,
+                                change_reason=change_reason_obj,
+                                note="Automaticky: Skorší príchod"
+                            )
+                            att.custom_start = plan.custom_start
+                            att.save(update_fields=['custom_start'])
+                            changed = True
+
+                        except ValidationError:
+                            print(f"⚠️ Prekrývanie: nevytvorený rozdiel za skorší príchod pre {plan.user} {plan.date}")
+
+                    # Neskorší odchod
+                    if att.custom_end and plan.custom_end and att.custom_end > plan.custom_end:
+                        try:
+                            cls.objects.create(
+                                user=plan.user,
+                                date=plan.date,
+                                custom_start=plan.custom_end,
+                                custom_end=att.custom_end,
+                                type_shift=changed_shift,
+                                note="Neskorší odchod"
+                            )
+                            PlannedShifts.objects.create(
+                                user=plan.user,
+                                date=plan.date,
+                                custom_start=plan.custom_end,
+                                custom_end=att.custom_end,
+                                type_shift=changed_shift,
+                                transferred=True,
+                                is_changed=True,
+                                change_reason=change_reason_obj,
+                                note="Neskorší odchod"
+                            )
+                            att.custom_end = plan.custom_end
+                            att.save(update_fields=['custom_end'])
+                            changed = True
+
+                        except ValidationError:
+                            print(f"⚠️ Prekrývanie: nevytvorený rozdiel za neskorší odchod pre {plan.user} {plan.date}")
+
+                    if changed:
+                        if not plan.transferred:
+                            plan.transferred = True
+                            plan.save(update_fields=['transferred'])
+
+                except cls.DoesNotExist:
                     continue
+                except Exception as e:
+                    print(f"🛑 Chyba pri spracovaní plánovaného záznamu pre {plan.user} - {e}")
 
-                changed = False
+        finally:
+            set_force_shift_times(False)
 
-                # Skorší príchod
-                if att.custom_start and plan.custom_start and att.custom_start < plan.custom_start:
-                    try:
-                        cls.objects.create(
-                            user=plan.user,
-                            date=plan.date,
-                            custom_start=att.custom_start,
-                            custom_end=plan.custom_start,
-                            type_shift=changed_shift,
-                            note="Skorší príchod "
-                        )
-                         # 2. Vytvor nový PlannedShift pre rozdiel
-                        PlannedShifts.objects.create(
-                            user=plan.user,
-                            date=plan.date,
-                            custom_start=att.custom_start,
-                            custom_end=plan.custom_start,
-                            type_shift=changed_shift,
-                            transferred=True,
-                            is_changed=True,
-                            change_reason="Automaticky: Skorší príchod doplniť dôvod!!!"
-                        )
-                        # 3. Aktualizuj hlavný attendance na plánovaný začiatok
-                        att.custom_start = plan.custom_start
-                        att.save(update_fields=['custom_start'])
-                        changed = True
-
-                    except ValidationError:
-                        print(f"⚠️ Prekrývanie: nevytvorený rozdiel za skorší príchod pre {plan.user} {plan.date}")
-
-                # Neskorší odchod
-                if att.custom_end and plan.custom_end and att.custom_end > plan.custom_end:
-                    try:
-                         # 1. Vytvor nový attendance záznam za neskorší odchod
-                        cls.objects.create(
-                            user=plan.user,
-                            date=plan.date,
-                            custom_start=plan.custom_end,
-                            custom_end=att.custom_end,
-                            type_shift=changed_shift,
-                            note="Neskorší odchod"
-                        )
-                        # 2. Vytvor nový PlannedShift pre rozdiel
-                        PlannedShifts.objects.create(
-                            user=plan.user,
-                            date=plan.date,
-                            custom_start=plan.custom_end,
-                            custom_end=att.custom_end,
-                            type_shift=changed_shift,
-                            transferred=True,
-                            is_changed=True,
-                            change_reason="Automaticky: neskorší odchod doplniť dôvod!!!"
-                        )
-                       # 3. Aktualizuj hlavný attendance na plánovaný koniec
-                        att.custom_end = plan.custom_end
-                        att.save(update_fields=['custom_end'])
-                        changed = True
-
-                    except ValidationError:
-                       print(f"⚠️ Prekrývanie: nevytvorený rozdiel za neskorší odchod pre {plan.user} {plan.date}")
-
-
-                if changed:
-                # označ pôvodnú plánovanú smenu ako prenesenú, ale nemeníme ju
-                    if not plan.transferred:
-                        plan.transferred = True
-                        plan.save(update_fields=['transferred'])
-
-            except cls.DoesNotExist:
-                continue
-            except Exception as e:
-                print(f"🛑 Chyba pri spracovaní plánovaného záznamu pre {plan.user} - {e}")
-
-    set_force_shift_times(False)
-        # Na konci resetni prepínač
-       
+        
     def exchange_shift(self, target_shift):
+                
         if not target_shift:
             raise ValidationError("Nebola vybraná smena na výmenu.")
 
@@ -240,13 +264,14 @@ class Attendance(models.Model):
             custom_end=self.custom_end,
             transferred=True,
             is_changed=True,
-            change_reason=self.exchange_reason,
+           
             note=f"Výmena smeny s {target_shift.user}"
         )
 
         new_shift.save()  # 🔴 Toto je kľúčové – musí sa uložiť pred použitím
-        # 🗑 Vymaž pôvodnú smenu kolegu
-        target_shift.delete()
+        # 🗑 inaktivuj pôvodnú smenu kolegu
+        target_shift.hidden = True
+        target_shift.save(update_fields=["hidden"])
 
         # 3. Priradíme referenciu na tú pôvodnú smenu (alebo tú novú)
         self.exchanged_with = new_shift
@@ -256,19 +281,32 @@ class Attendance(models.Model):
 
 
     def save(self, *args, **kwargs):
-        # 1. Zaokrúhlenie časov na najbližšiu polhodinu
+        if not get_force_shift_times():
+        # Ak nemáme force flag, doplni custom časy z plánovanej smeny alebo typu smeny
+        # Dopĺňanie z planned_shift alebo type_shift, ak nie sú ručne zadané
+            if self.planned_shift:
+                if not self.date:
+                    self.date = self.planned_shift.date
+                if not self.custom_start:
+                    self.custom_start = self.planned_shift.custom_start  # ✅ správne pole
+                if not self.custom_end:
+                    self.custom_end = self.planned_shift.custom_end      # ✅ správne pole
+                if not self.type_shift:
+                    self.type_shift = self.planned_shift.type_shift      # ✅ doplníš aj typ smeny
+
+            elif self.type_shift:
+                if not self.custom_start:
+                    self.custom_start = self.type_shift.start_time
+                if not self.custom_end:
+                    self.custom_end = self.type_shift.end_time
+
+        # Zaokrúhlenie na najbližšiu polhodinu
         if self.custom_start:
-             self.custom_start = self.round_to_nearest_half_hour(self.custom_start)
+            self.custom_start = self.round_to_nearest_half_hour(self.custom_start)
         if self.custom_end:
             self.custom_end = self.round_to_nearest_half_hour(self.custom_end)
-        # 🟡 1. Doplnenie časov zo smeny, ak nie sú zadané ručne
-        if self.type_shift:
-            if not self.custom_start:
-                self.custom_start = self.type_shift.start_time
-            if not self.custom_end:
-                self.custom_end = self.type_shift.end_time
 
-        # 🔴 2. Validácia časového intervalu (aj cez polnoc)
+        # Validácia časov (aj cez polnoc)
         if self.custom_start and self.custom_end:
             start_dt = datetime.combine(date.today(), self.custom_start)
             end_dt = datetime.combine(date.today(), self.custom_end)
@@ -276,18 +314,30 @@ class Attendance(models.Model):
                 end_dt += timedelta(days=1)
                 if end_dt <= start_dt:
                     raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
+    # Doplním automatické nastavenie calendar_day podľa date/planned_shift.date, ak nie je nastavené
+        if not self.calendar_day:
+            day_date = self.date or (self.planned_shift.date if self.planned_shift else None)
+            if day_date:
+                calendar_day = CalendarDay.objects.filter(date=day_date).first()
+                if calendar_day:
+                    self.calendar_day = calendar_day
 
-        # ✅ 3. Ulož samotný záznam dochádzky (ostatné spracujú signály)
         super().save(*args, **kwargs)
 
 
 """Change reason"""
 class ChangeReason(models.Model):
-    code = models.CharField(max_length=50, unique=True)  # napr. "SHIFT_SWAP"
-    description = models.CharField(max_length=255)      # napr. "Zmena z dôvodu výmeny smeny"
+    CATEGORY_CHOICES = [
+        ('absence', 'Neprítomnosť / zmena rozpisu'),
+        ('cdr', 'Iná činnosť zamestnanca '),
+    ]
+
+    name = models.CharField(max_length=255, default="Dôvod nezadaný")
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=10, choices=CATEGORY_CHOICES)
 
     def __str__(self):
-        return self.description
+        return self.name
     
 
 """planned shifts"""
@@ -295,15 +345,16 @@ class ChangeReason(models.Model):
 
 class PlannedShifts(models.Model):
     user = models.ForeignKey(Employees, on_delete=models.CASCADE)
-    date = models.DateField()
+    date = models.DateField(null=True, blank=True)
     type_shift = models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
     custom_start = models.TimeField(null=True, blank=True)
     custom_end = models.TimeField(null=True, blank=True)
     note = models.TextField(blank=True)
     transferred = models.BooleanField(default=False)
     is_changed = models.BooleanField(default=False)
-    change_reason = models.CharField(max_length=255, blank=True, null=True)
-    calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="planned_shifts",null=True, blank=True)
+    hidden = models.BooleanField(default=False)
+    change_reason = models.ForeignKey('WorkTrackApi.ChangeReason',on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
+    calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="calendar_day",null=True, blank=True)
    
     class Meta:
       unique_together = ('user', 'date', 'custom_start', 'custom_end')
