@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Employees, TypeShift,Attendance, PlannedShifts
+from .models import Employees, TypeShift,Attendance, PlannedShifts,ChangeReason,CalendarDay
 
 
 class EmployeesSerializer(serializers.ModelSerializer):
@@ -46,3 +46,17 @@ class PlannedShiftsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlannedShifts
         fields = ['id', 'user', 'date', 'type_shift', 'custom_start', 'custom_end', 'note', 'is_changed', 'change_reason' ]
+
+class ChangeReasonSerializers(serializers.ModelSerializer):
+
+    class Meta:
+        model=ChangeReason
+        fields=['id','name', 'description', 'category']
+
+
+class CalendarDaySerializers(serializers.ModelSerializer):
+
+    class Meta:
+        model=CalendarDay
+        fields=['id','date', 'day', 'is_weekend','is_holiday','holiday_name']
+        
