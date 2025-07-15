@@ -1,11 +1,93 @@
 from rest_framework import viewsets, permissions,status
 from .models import Employees,TypeShift,Attendance,PlannedShifts,ChangeReason,CalendarDay
 from .serializers import EmployeesSerializer, TypeShiftSerializer, AttendanceSerializer, PlannedShiftsSerializer,ChangeReasonSerializers,CalendarDaySerializers
+from.services import calculate_working_fund,calculate_worked_hours,calculate_saturday_sunday_hours,calculate_weekend_hours,calculate_holiday_hours,compare_worked_time_working_fund
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import PermissionDenied
 from datetime import time, timedelta
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
+
+
+class WorkingFundAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request, year: int, month: int):
+        fund = calculate_working_fund(year, month)
+        return Response({
+            "year": year,
+            "month": month,
+            "working_fund_hours": fund,
+        })
+
+
+class WorkedHoursAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    
+    def get(self, request, employee_id, year, month):
+        user = request.user
+
+        # Ak je worker, smie vidieť len seba
+        if user.role == "worker" and user.id != employee_id:
+            return Response({"detail": "Nemáš oprávnenie vidieť údaje iných."}, status=403)
+
+        # Vypočítaj odpracované hodiny
+        hours = calculate_worked_hours(employee_id, year, month)
+        return Response({"worked_hours": hours})
+        
+class SaturdaySundayHoursApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, employee_id, year, month):
+        user = request.user
+        # Ak je worker, smie vidieť len seba
+        if user.role == "worker" and user.id != employee_id:
+                return Response({"detail": "Nemáš oprávnenie vidieť údaje iných."}, status=403)
+
+        # Vypočítaj odpracované hodiny
+        hours = calculate_saturday_sunday_hours(employee_id, year, month)
+        return Response({"worked_hours": hours})
+    
+class WeekendHoursApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, employee_id, year, month):
+        user = request.user
+        # Ak je worker, smie vidieť len seba
+        if user.role == "worker" and user.id != employee_id:
+                return Response({"detail": "Nemáš oprávnenie vidieť údaje iných."}, status=403)
+
+        # Vypočítaj odpracované hodiny
+        hours = calculate_weekend_hours(employee_id, year, month)
+        return Response({"worked_hours": hours})
+
+class CompareHoursApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, employee_id, year, month):
+        user = request.user
+        # Ak je worker, smie vidieť len seba
+        if user.role == "worker" and user.id != employee_id:
+                return Response({"detail": "Nemáš oprávnenie vidieť údaje iných."}, status=403)
+
+        # Vypočítaj odpracované hodiny
+        hours =compare_worked_time_working_fund(employee_id, year, month)
+        return Response({"worked_hours": hours})
+
+class HolidayHoursApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, employee_id, year, month):
+        user = request.user
+        # Ak je worker, smie vidieť len seba
+        if user.role == "worker" and user.id != employee_id:
+                return Response({"detail": "Nemáš oprávnenie vidieť údaje iných."}, status=403)
+
+        # Vypočítaj odpracované hodiny
+        hours = calculate_holiday_hours(employee_id, year, month)
+        return Response({"worked_hours": hours})
+
 
 
 
