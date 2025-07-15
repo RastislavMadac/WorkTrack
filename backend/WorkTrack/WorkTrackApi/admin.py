@@ -54,12 +54,24 @@ class AttendanceAdmin(admin.ModelAdmin):
 
         # Ulož objekt
         super().save_model(request, obj, form, change)
+       
+        if obj.type_shift and obj.type_shift.nameShift == "Nočná služba 12 hod":
+          obj.handle_night_shift()
+          print("Volám handle_night_shift()")
+       
 
-        print("Volám handle_night_shift()")
-        obj.handle_night_shift()
 
-        print("Volám handle_any_shift_time()")
-        Attendance.handle_any_shift_time()
+        if  obj.custom_start != obj.type_shift.start_time:
+            obj.handle_any_shift_time()
+            print("Volám handle_any_shift_time()")
+        
+        if  obj.custom_end != obj.type_shift.end_time:
+            obj.handle_current_shift_time(obj)
+            print("Volám handle_current_shift_time()")
+        
+        
+        print("Volám create_planned_shift()")
+        Attendance.create_planned_shift(obj)
 
         print("Volam")
 

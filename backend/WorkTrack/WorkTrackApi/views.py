@@ -86,6 +86,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             )
 
             attendance.exchange_shift(target_shift)
+            attendance.create_planned_shift(attendance)
 
             return Response(self.get_serializer(attendance).data, status=status.HTTP_201_CREATED)
 
@@ -121,10 +122,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             instance = serializer.save()
 
         # Zavoláme metódu z modelu
-        instance.handle_night_shift()
-        Attendance.handle_any_shift_time()
+        if instance.type_shift.nameShift == "Nočná služba 12 hod":
+         instance.handle_night_shift()
 
-       
+        if instance.custom_start != instance.type_shift.start_time:
+          instance.handle_any_shift_time()
+
+        if instance.custom_end !=instance.type_shift.end_time:
+            instance.handle_current_shift_time(instance)
+
     
 
     def perform_update(self, serializer):

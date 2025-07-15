@@ -188,7 +188,7 @@ class Attendance(models.Model):
                                 transferred=True,
                                 is_changed=True,
                                 change_reason=change_reason_obj,
-                                note="Automaticky: Skorší príchod"
+                                note="Pozor Vytvorený Skorší odchod treba zadať dôvod"
                             )
                             att.custom_start = plan.custom_start
                             att.save(update_fields=['custom_start'])
@@ -217,7 +217,7 @@ class Attendance(models.Model):
                                 transferred=True,
                                 is_changed=True,
                                 change_reason=change_reason_obj,
-                                note="Neskorší odchod"
+                                note="Pozor Vytvorený Neskorší odchod treba zadať dôvod"
                             )
                             att.custom_end = plan.custom_end
                             att.save(update_fields=['custom_end'])
@@ -238,6 +238,34 @@ class Attendance(models.Model):
 
         finally:
             set_force_shift_times(False)
+    
+    
+
+    def create_planned_shift(attendance):
+        planned_shift=PlannedShifts.objects.filter(hidden=False,user=attendance.user, date=attendance.date)
+
+        if not planned_shift.exists():
+            # Ak typ smeny je nočná, použi iný koniec smeny
+            if attendance.type_shift.nameShift == "Nočná služba 12 hod":
+                custom_end = attendance.type_shift.end_time  # musí byť definované v modeli
+            else:
+                custom_end = attendance.custom_end
+
+            # Vytvor novú plánovanú smenu
+            PlannedShifts.objects.create(
+                user=attendance.user,
+                date=attendance.date,
+                custom_start=attendance.custom_start,
+                custom_end=custom_end,
+                type_shift=attendance.type_shift,
+                transferred=True,
+                is_changed=True,
+                note="Pozor neplánovaná smena – treba zadať dôvod!!!"
+            )
+            print(f"Neplánovaná smena pre {attendance.user} bola vytvorená")
+                                
+            
+            
 
         
     def exchange_shift(self, target_shift):
@@ -265,7 +293,7 @@ class Attendance(models.Model):
             transferred=True,
             is_changed=True,
            
-            note=f"Výmena smeny s {target_shift.user}"
+            note=f"Pozor Výmena smeny s {target_shift.user} treba zadať dovod"
         )
 
         new_shift.save()  # 🔴 Toto je kľúčové – musí sa uložiť pred použitím
@@ -279,6 +307,59 @@ class Attendance(models.Model):
         # ✅ Ulož aktualizovaný Attendance
         self.save()
 
+    @classmethod
+    def reset_auto_changed_attendance(cls, user, target_date):
+        auto_records = PlannedShifts.objects.filter(
+            user=user,
+             date=target_date,
+            hidden=False,
+            is_changed=True,
+            note__icontains="Chýbajúca dochádzka k plánovanej smene"
+        )
+        updated_count = auto_records.update(is_changed=False, note="")
+
+
+        print(f"Resetovaných {updated_count} automatických záznamov plánovaných smien.")
+
+
+    @classmethod
+    def handle_current_shift_time(cls, attendance):
+        planned_shift = PlannedShifts.objects.filter(
+            hidden=False,
+            user=attendance.user,
+            date=attendance.date,
+            custom_start=attendance.custom_start
+        ).first()
+
+        attendance_shift=Attendance.objects.filter(user=attendance.user,
+            date=attendance.date,custom_start=attendance.custom_start).first()
+
+        if not planned_shift or not attendance_shift:
+            return  # bezpečnostná kontrola, ak niečo chýba
+
+        if attendance_shift.custom_end != planned_shift.custom_end:
+            try:
+                type_shift_obj = TypeShift.objects.get(id=22)
+            except TypeShift.DoesNotExist:
+                print("Typ smeny neexistuje!")
+           
+            Attendance.objects.update(
+                    type_shift= type_shift_obj
+            )
+
+            PlannedShifts.objects.create(
+                    user=attendance.user,
+                    date=attendance.date,
+                    custom_start=attendance.custom_start,
+                    custom_end=attendance.custom_end,
+                    type_shift= type_shift_obj,
+                    transferred=True,
+                    is_changed=True,
+                    note="Pozor neplánovaná smena – treba zadať dôvod!!!"
+                )
+            print(f"Neplánovaná smena pre {attendance.user} bola vytvorená")
+        planned_shift.hidden =True
+        planned_shift.save(update_fields=["hidden"])
 
     def save(self, *args, **kwargs):
         if not get_force_shift_times():
@@ -321,8 +402,10 @@ class Attendance(models.Model):
                 calendar_day = CalendarDay.objects.filter(date=day_date).first()
                 if calendar_day:
                     self.calendar_day = calendar_day
-
+        Attendance.reset_auto_changed_attendance(self.user, self.date)
         super().save(*args, **kwargs)
+       
+        
 
 
 """Change reason"""
