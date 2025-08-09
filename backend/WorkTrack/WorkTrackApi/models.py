@@ -7,6 +7,9 @@ from decimal import Decimal
 from datetime import date, datetime, timedelta, time
 import threading
 import calendar
+from .utils.attendance_utils import (
+    round_to_nearest_half_hour
+)
 
 _thread_locals = threading.local()
 
@@ -37,13 +40,14 @@ class Employees(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.personal_number})"
 
-
+"""VYTVORIT PODMINKU AK PLANUJEM SMENU NADAJU SA MENIT CASY"""
 
 class TypeShift(models.Model):
     nameShift = models.CharField(max_length=50)
-    start_time = models.TimeField()
-    end_time = models.TimeField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
     duration_time = models.DecimalField(
+        null=True, blank=True,
         max_digits=4, decimal_places=2,
         validators=[
             MinValueValidator(Decimal("0.5"), message="Trvanie musí byť aspoň 0.5 hodiny"),
@@ -59,14 +63,26 @@ class TypeShift(models.Model):
         return self.nameShift
 
     def clean(self):
-        if not self.allow_variable_time:
-            if self.end_time <= self.start_time:
-                raise ValidationError("Koniec smeny musí byť neskôr ako začiatok.")
+        # povinné len ak nejde o typ s id=22 (alebo ešte neexistuje a nameShift nie je špeciálne)
+        if self.id != 22:
+            missing = []
+            if not self.start_time:
+                missing.append("start_time")
+            if not self.end_time:
+                missing.append("end_time")
+            if not self.duration_time:
+                missing.append("duration_time")
+            if missing:
+                raise ValidationError(f"Tieto polia sú povinné pre túto smenu: {', '.join(missing)}")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()  # spustí clean() pred uložením
+        super().save(*args, **kwargs)
 
 """emploee time at work"""
 class Attendance(models.Model):
     user= models.ForeignKey(Employees, on_delete=models.CASCADE)
-    date = models.DateField()
+    date = models.DateField(null=True, blank=True)
     type_shift= models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
     planned_shift = models.ForeignKey('WorkTrackApi.PlannedShifts',
     null=True,
@@ -89,324 +105,103 @@ class Attendance(models.Model):
 
     
     calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="attendances",null=True, blank=True)
-    # class Meta:
-    #     unique_together=('user', 'date')
+
+    class Meta:
+            unique_together = ('user', 'date', 'custom_start', 'custom_end')
+            ordering = ['date', 'user']
+
+    def __str__(self):
+        return f"{self.user} - {self.date} ({self.custom_start} - {self.custom_end})"
+
+
+    # def save(self, *args, **kwargs):
+    #     # Overenie existencie pôvodného záznamu (update)
+    #     if self.pk:
+    #         # Načítaj pôvodný Attendance z DB
+    #         orig_attendance = Attendance.objects.get(pk=self.pk)
+
+    #         # Načítaj plánovanú smenu pre tento attendance (ak existuje)
+    #         orig_planned_shift = None
+    #         if self.planned_shift_id:
+    #             try:
+    #                 orig_planned_shift = PlannedShifts.objects.get(pk=self.planned_shift_id)
+    #             except PlannedShifts.DoesNotExist:
+    #                 orig_planned_shift = None
+
+            
+    #         # Ak sa mení dátum, aktualizuj calendar_day
+    #         if self.date != orig_attendance.date:
+    #             try:
+    #                 self.calendar_day = CalendarDay.objects.get(date=self.date)
+    #             except CalendarDay.DoesNotExist:
+    #                 raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
+
+    #     else:
+    #         # Pri vytváraní novej Attendance nastav calendar_day podľa dátumu
+    #         if self.date and not self.calendar_day:
+    #             try:
+    #                 self.calendar_day = CalendarDay.objects.get(date=self.date)
+    #             except CalendarDay.DoesNotExist:
+    #                 raise ValidationError(f"CalendarDay pre dátum {self.date} neexistuje.")
+
+    #     # Ak attendance nemá custom časy, môžeš ich nastaviť podľa type_shift (ak existuje)
+    #     if self.type_shift:
+    #         if not self.custom_start:
+    #             self.custom_start = self.type_shift.start_time
+    #         if not self.custom_end:
+    #             self.custom_end = self.type_shift.end_time
+
+    #     # Validácia časov custom_start a custom_end
+    #     if self.custom_start and self.custom_end:
+    #         start = datetime.combine(date.today(), self.custom_start)
+    #         end = datetime.combine(date.today(), self.custom_end)
+    #         if end <= start:
+    #             end += timedelta(days=1)
+    #             if end <= start:
+    #                 raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
+
+    #     # Volaj rodičovské save
+    #     super().save(*args, **kwargs)
+    #     print(f"Uložil sa Attendance pre user {self.user} na dátum {self.date}")
+    def save(self, *args, **kwargs):
+        # Pri update aktualizuj calendar_day, ak sa mení dátum
+        if self.pk:
+            orig_attendance = Attendance.objects.get(pk=self.pk)
+
+            if self.date != orig_attendance.date:
+                try:
+                    self.calendar_day = CalendarDay.objects.get(date=self.date)
+                except CalendarDay.DoesNotExist:
+                    raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
+        else:
+            # Pri vytváraní nastav calendar_day podľa dátumu
+            if self.date and not self.calendar_day:
+                try:
+                    self.calendar_day = CalendarDay.objects.get(date=self.date)
+                except CalendarDay.DoesNotExist:
+                    raise ValidationError(f"CalendarDay pre dátum {self.date} neexistuje.")
+
+        # Ak attendance nemá custom časy, môžeš ich nastaviť podľa type_shift (ak existuje)
+        if self.type_shift:
+            if not self.custom_start:
+                self.custom_start = self.type_shift.start_time
+            if not self.custom_end:
+                self.custom_end = self.type_shift.end_time
+
+        # Validácia časov custom_start a custom_end
+        if self.custom_start and self.custom_end:
+            start = datetime.combine(date.today(), self.custom_start)
+            end = datetime.combine(date.today(), self.custom_end)
+            if end <= start:
+                end += timedelta(days=1)
+                if end <= start:
+                    raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
+
+        super().save(*args, **kwargs)
+        print(f"Uložil sa Attendance pre user {self.user} na dátum {self.date}")
 
    
-
-    def clean(self):
-        # Overenie neprekrytia časových intervalov pre rovnakého user a date
-        overlapping = Attendance.objects.filter(
-            user=self.user,
-            date=self.date,
-        ).exclude(pk=self.pk)  # nezahrňujem seba samého
-
-        for att in overlapping:
-            # Intervaly [custom_start, custom_end)
-            if self.custom_start and self.custom_end and att.custom_start and att.custom_end:
-                # Check overlap
-                if (self.custom_start < att.custom_end and self.custom_end > att.custom_start):
-                    raise ValidationError("Časové intervaly sa prekrývajú s iným záznamom.")
-      
-    def round_to_nearest_half_hour(self,t: time) -> time:
-        dt = datetime.combine(datetime.today(), t)
-        minute = dt.minute
-        # Rozdiel k dolnej a hornej 30-minútovej hranici
-        down = minute % 30
-        up = 30 - down
-
-        if down < up:
-            dt_rounded = dt - timedelta(minutes=down)
-        else:
-            dt_rounded = dt + timedelta(minutes=up)
-        return dt_rounded.time()
-  
-        #ZMENA NOčNEJ  
-    def handle_night_shift(self):
-        if self.type_shift and self.type_shift.id == 20:
-            self.custom_end = time(0, 0)
-            self.save()
-
-            next_day = self.date + timedelta(days=1)
-
-            Attendance.objects.create(
-                user=self.user,
-                date=next_day,
-                type_shift=self.type_shift,
-                custom_start=time(0, 0),
-                custom_end=time(9, 0),
-                note="Pokračovanie nočnej smeny",
-            )
     
-
-    #  """PREPISUJE NOVE CASY V PLANNED SHIFT"""   
-    @classmethod
-    def handle_any_shift_time(cls):
-        set_force_shift_times(True)
-        try:
-            change_reason_obj = ChangeReason.objects.filter(category="cdr").first()
-            if not change_reason_obj:
-                print("⚠️ Chýba ChangeReason pre 'skorší príchod' s kategóriou 'absence'")
-
-            print("Spúšťam handle_any_shift_time...")
-
-            type_shift_id = 22
-            changed_shift = TypeShift.objects.get(id=type_shift_id)
-
-            # Spracovávame len plánované smeny, ktoré nie sú skryté
-            for plan in PlannedShifts.objects.filter(hidden=False):
-                try:
-                    att = cls.objects.filter(
-                        user=plan.user,
-                        date=plan.date
-                    ).filter(
-                        models.Q(exchanged_with__isnull=True) | models.Q(exchanged_with__hidden=False)
-                    ).order_by('id').first()
-
-                    if not att:
-                        continue
-
-                    changed = False
-
-                    # Skorší príchod
-                    if att.custom_start and plan.custom_start and att.custom_start < plan.custom_start:
-                        try:
-                            cls.objects.create(
-                                user=plan.user,
-                                date=plan.date,
-                                custom_start=att.custom_start,
-                                custom_end=plan.custom_start,
-                                type_shift=changed_shift,
-                                note="Skorší príchod "
-                            )
-                            PlannedShifts.objects.create(
-                                user=plan.user,
-                                date=plan.date,
-                                custom_start=att.custom_start,
-                                custom_end=plan.custom_start,
-                                type_shift=changed_shift,
-                                transferred=True,
-                                is_changed=True,
-                                change_reason=change_reason_obj,
-                                note="Pozor Vytvorený Skorší odchod treba zadať dôvod"
-                            )
-                            att.custom_start = plan.custom_start
-                            att.save(update_fields=['custom_start'])
-                            changed = True
-
-                        except ValidationError:
-                            print(f"⚠️ Prekrývanie: nevytvorený rozdiel za skorší príchod pre {plan.user} {plan.date}")
-
-                    # Neskorší odchod
-                    if att.custom_end and plan.custom_end and att.custom_end > plan.custom_end:
-                        try:
-                            cls.objects.create(
-                                user=plan.user,
-                                date=plan.date,
-                                custom_start=plan.custom_end,
-                                custom_end=att.custom_end,
-                                type_shift=changed_shift,
-                                note="Neskorší odchod"
-                            )
-                            PlannedShifts.objects.create(
-                                user=plan.user,
-                                date=plan.date,
-                                custom_start=plan.custom_end,
-                                custom_end=att.custom_end,
-                                type_shift=changed_shift,
-                                transferred=True,
-                                is_changed=True,
-                                change_reason=change_reason_obj,
-                                note="Pozor Vytvorený Neskorší odchod treba zadať dôvod"
-                            )
-                            att.custom_end = plan.custom_end
-                            att.save(update_fields=['custom_end'])
-                            changed = True
-
-                        except ValidationError:
-                            print(f"⚠️ Prekrývanie: nevytvorený rozdiel za neskorší odchod pre {plan.user} {plan.date}")
-
-                    if changed:
-                        if not plan.transferred:
-                            plan.transferred = True
-                            plan.save(update_fields=['transferred'])
-
-                except cls.DoesNotExist:
-                    continue
-                except Exception as e:
-                    print(f"🛑 Chyba pri spracovaní plánovaného záznamu pre {plan.user} - {e}")
-
-        finally:
-            set_force_shift_times(False)
-    
-    
-
-    def create_planned_shift(attendance):
-        planned_shift=PlannedShifts.objects.filter(hidden=False,user=attendance.user, date=attendance.date)
-
-        if not planned_shift.exists():
-            # Ak typ smeny je nočná, použi iný koniec smeny
-            if attendance.type_shift.nameShift == "Nočná služba 12 hod":
-                custom_end = attendance.type_shift.end_time  # musí byť definované v modeli
-            else:
-                custom_end = attendance.custom_end
-
-            # Vytvor novú plánovanú smenu
-            PlannedShifts.objects.create(
-                user=attendance.user,
-                date=attendance.date,
-                custom_start=attendance.custom_start,
-                custom_end=custom_end,
-                type_shift=attendance.type_shift,
-                transferred=True,
-                is_changed=True,
-                note="Pozor neplánovaná smena – treba zadať dôvod!!!"
-            )
-            print(f"Neplánovaná smena pre {attendance.user} bola vytvorená")
-                                
-            
-            
-
-        
-    def exchange_shift(self, target_shift):
-                
-        if not target_shift:
-            raise ValidationError("Nebola vybraná smena na výmenu.")
-
-        if self.user == target_shift.user:
-            raise ValidationError("Nemôžeš si vymeniť smenu sám so sebou.")
-
-        if self.date != target_shift.date or self.type_shift != target_shift.type_shift:
-            raise ValidationError("Smena na výmenu musí byť rovnakého typu a dňa.")
-
-        # 🔤 Vygeneruj dynamický dôvod
-        self.exchange_reason = f"výmena smien s {target_shift.user.full_name if hasattr(target_shift.user, 'full_name') else str(target_shift.user)}"
-        self.exchanged_with = target_shift
-
-        # 💾 Vytvor nový plánovaný záznam pre tohto zamestnanca (ak chceš)
-        new_shift=PlannedShifts.objects.create(
-            user=self.user,
-            date=self.date,
-            type_shift=self.type_shift,
-            custom_start=self.custom_start,
-            custom_end=self.custom_end,
-            transferred=True,
-            is_changed=True,
-           
-            note=f"Pozor Výmena smeny s {target_shift.user} treba zadať dovod"
-        )
-
-        new_shift.save()  # 🔴 Toto je kľúčové – musí sa uložiť pred použitím
-        # 🗑 inaktivuj pôvodnú smenu kolegu
-        target_shift.hidden = True
-        target_shift.save(update_fields=["hidden"])
-
-        # 3. Priradíme referenciu na tú pôvodnú smenu (alebo tú novú)
-        self.exchanged_with = new_shift
-
-        # ✅ Ulož aktualizovaný Attendance
-        self.save()
-
-    @classmethod
-    def reset_auto_changed_attendance(cls, user, target_date):
-        auto_records = PlannedShifts.objects.filter(
-            user=user,
-             date=target_date,
-            hidden=False,
-            is_changed=True,
-            note__icontains="Chýbajúca dochádzka k plánovanej smene"
-        )
-        updated_count = auto_records.update(is_changed=False, note="")
-
-
-        print(f"Resetovaných {updated_count} automatických záznamov plánovaných smien.")
-
-
-    @classmethod
-    def handle_current_shift_time(cls, attendance):
-        planned_shift = PlannedShifts.objects.filter(
-            hidden=False,
-            user=attendance.user,
-            date=attendance.date,
-            custom_start=attendance.custom_start
-        ).first()
-
-        attendance_shift=Attendance.objects.filter(user=attendance.user,
-            date=attendance.date,custom_start=attendance.custom_start).first()
-
-        if not planned_shift or not attendance_shift:
-            return  # bezpečnostná kontrola, ak niečo chýba
-
-        if attendance_shift.custom_end != planned_shift.custom_end:
-            try:
-                type_shift_obj = TypeShift.objects.get(id=22)
-            except TypeShift.DoesNotExist:
-                print("Typ smeny neexistuje!")
-           
-            Attendance.objects.update(
-                    type_shift= type_shift_obj
-            )
-
-            PlannedShifts.objects.create(
-                    user=attendance.user,
-                    date=attendance.date,
-                    custom_start=attendance.custom_start,
-                    custom_end=attendance.custom_end,
-                    type_shift= type_shift_obj,
-                    transferred=True,
-                    is_changed=True,
-                    note="Pozor neplánovaná smena – treba zadať dôvod!!!"
-                )
-            print(f"Neplánovaná smena pre {attendance.user} bola vytvorená")
-        planned_shift.hidden =True
-        planned_shift.save(update_fields=["hidden"])
-
-    def save(self, *args, **kwargs):
-        if not get_force_shift_times():
-        # Ak nemáme force flag, doplni custom časy z plánovanej smeny alebo typu smeny
-        # Dopĺňanie z planned_shift alebo type_shift, ak nie sú ručne zadané
-            if self.planned_shift:
-                if not self.date:
-                    self.date = self.planned_shift.date
-                if not self.custom_start:
-                    self.custom_start = self.planned_shift.custom_start  # ✅ správne pole
-                if not self.custom_end:
-                    self.custom_end = self.planned_shift.custom_end      # ✅ správne pole
-                if not self.type_shift:
-                    self.type_shift = self.planned_shift.type_shift      # ✅ doplníš aj typ smeny
-
-            elif self.type_shift:
-                if not self.custom_start:
-                    self.custom_start = self.type_shift.start_time
-                if not self.custom_end:
-                    self.custom_end = self.type_shift.end_time
-
-        # Zaokrúhlenie na najbližšiu polhodinu
-        if self.custom_start:
-            self.custom_start = self.round_to_nearest_half_hour(self.custom_start)
-        if self.custom_end:
-            self.custom_end = self.round_to_nearest_half_hour(self.custom_end)
-
-        # Validácia časov (aj cez polnoc)
-        if self.custom_start and self.custom_end:
-            start_dt = datetime.combine(date.today(), self.custom_start)
-            end_dt = datetime.combine(date.today(), self.custom_end)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-                if end_dt <= start_dt:
-                    raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
-    # Doplním automatické nastavenie calendar_day podľa date/planned_shift.date, ak nie je nastavené
-        if not self.calendar_day:
-            day_date = self.date or (self.planned_shift.date if self.planned_shift else None)
-            if day_date:
-                calendar_day = CalendarDay.objects.filter(date=day_date).first()
-                if calendar_day:
-                    self.calendar_day = calendar_day
-        Attendance.reset_auto_changed_attendance(self.user, self.date)
-        super().save(*args, **kwargs)
-       
-        
-
 
 """Change reason"""
 class ChangeReason(models.Model):
@@ -445,61 +240,53 @@ class PlannedShifts(models.Model):
     def __str__(self):
         return f"{self.user} {self.type_shift}"
 
-    def save(self, *args, **kwargs):
-        if self.pk:
-            orig = PlannedShifts.objects.get(pk=self.pk)
-            # Kontrola zmien časov
-            if orig.custom_start and self.custom_start and self.custom_start != orig.custom_start:
-                raise ValidationError("Zmena časov plánovanej smeny nie je povolená (začiatok).")
+    # def save(self, *args, **kwargs):
+    #     print(f"DEBUG PlannedShifts.save(): pk={self.pk}, user={self.user}, type_shift_id={self.type_shift_id}")
+    #     print(f"DEBUG PlannedShifts.save(): custom_start={self.custom_start}, custom_end={self.custom_end}")
+    #     print(f"🟡 Pred save(): custom_start={self.custom_start}, custom_end={self.custom_end}, type_shift={self.type_shift}")
 
-            if orig.custom_end and self.custom_end and self.custom_end != orig.custom_end:
-                raise ValidationError("Zmena časov plánovanej smeny nie je povolená (koniec).")
-            # ⚠️ Skontroluj, či sa zmenil dátum a nastav calendar_day nanovo
-            if self.date != orig.date:
-                try:
-                    self.calendar_day = CalendarDay.objects.get(date=self.date)
-                except CalendarDay.DoesNotExist:
-                    raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
+    #     is_update = bool(self.pk)
+    #     orig = None
 
-        else:
-            # Vytváranie novej smeny
-            if not self.calendar_day and self.date:
-                try:
-                    self.calendar_day = CalendarDay.objects.get(date=self.date)
-                except CalendarDay.DoesNotExist:
-                    raise ValidationError(f"CalendarDay pre dátum {self.date} neexistuje.")
+    #     if is_update:
+    #         try:
+    #             orig = PlannedShifts.objects.get(pk=self.pk)
+    #         except PlannedShifts.DoesNotExist:
+    #             print("⚠️ Smena s týmto PK ešte neexistuje – preskakujem kontrolu pôvodných hodnôt.")
 
-         # ⏰ Doplnenie časov zo smeny (iba pri vytváraní)
-        if self.type_shift:
-            if not self.custom_start:
-                self.custom_start = self.type_shift.start_time
-            if not self.custom_end:
-                self.custom_end = self.type_shift.end_time
+    #     # 🔐 Ochrana pred nepovolenými zmenami plánovanej smeny (typ != 22)
+    #     if orig and self.type_shift_id != 22:
+    #         role = getattr(self.user, "role", None)
 
-                  
+    #         # 🕵️‍♂️ Debug výstup
+    #         print(f"🔍 Kontrola zmeny času: pôvodný=({orig.custom_start}-{orig.custom_end}), nový=({self.custom_start}-{self.custom_end}), rola={role}")
 
-        # Potom môžeš overiť, či je daný deň sviatok alebo víkend
-        if self.calendar_day:
-            print(f"Calendar day: {self.calendar_day.date}, sviatok: {self.calendar_day.is_holiday}, víkend: {self.calendar_day.is_weekend}")
-            if self.calendar_day.is_holiday:
-            # sprav niečo, ak je sviatok
-                print("Toto je sviatok")
-            elif self.calendar_day.is_weekend:
-            # sprav niečo, ak je víkend
-                print("Toto je víkend")
-        # 🕒 Validácia
-        if self.custom_start and self.custom_end:
-            start = datetime.combine(date.today(), self.custom_start)
-            end = datetime.combine(date.today(), self.custom_end)
-            if end <= start:
-                end += timedelta(days=1)
-                if end <= start:
-                    raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
+    #         if role not in ["admin", "manager"]:
+    #             if self.custom_start != orig.custom_start:
+    #                 raise ValidationError("Zmena časov plánovanej smeny nie je povolená (začiatok).")
+    #             if self.custom_end != orig.custom_end:
+    #                 raise ValidationError("Zmena časov plánovanej smeny nie je povolená (koniec).")
 
-    
-        # 💾 Ulož záznam
-        super().save(*args, **kwargs)
-        print(f"Ukladám PlannedShift pre dátum {self.date}")
+    #     # 🗓️ Nastavenie calendar_day ak chýba
+    #     if self.date and not self.calendar_day:
+    #         try:
+    #             self.calendar_day = CalendarDay.objects.get(date=self.date)
+    #         except CalendarDay.DoesNotExist:
+    #             raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
+
+    #     # 🕒 Automatické doplnenie časov z type_shift
+    #     if self.type_shift:
+    #         if not self.custom_start:
+    #             self.custom_start = self.type_shift.start_time
+    #         if not self.custom_end:
+    #             self.custom_end = self.type_shift.end_time
+
+    #     super().save(*args, **kwargs)
+    #     print(f"✅ Uložená smena pre dátum {self.date}, custom_start={self.custom_start}, custom_end={self.custom_end}, typ={self.type_shift_id}")
+
+
+
+
 
 class CalendarDay(models.Model):
     date = models.DateField(unique=True)

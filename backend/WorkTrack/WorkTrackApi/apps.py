@@ -1,4 +1,3 @@
-# WorkTrackApi/apps.py
 from django.apps import AppConfig
 
 class WorkTrackApiConfig(AppConfig):
@@ -7,3 +6,4 @@ class WorkTrackApiConfig(AppConfig):
 
     def ready(self):
         import WorkTrackApi.signals  # 👈 Načítanie signálov
+        from WorkTrackApi.utils.attendance_utils import handle_night_shift

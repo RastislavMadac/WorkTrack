@@ -1,6 +1,6 @@
 from django.urls import path, include 
 from rest_framework import routers 
-from .views import EmployeesViewSet,TypeShiftViewSet,AttendanceViewSet, PlannerShiftsViewSet,ChangeReasonViewSet,CalendarDayViewSet,WorkingFundAPIView, WorkedHoursAPIView,SaturdaySundayHoursApiView,WeekendHoursApiView,HolidayHoursApiView,CompareHoursApiView
+from .views import EmployeesViewSet,TypeShiftViewSet,AttendanceViewSet, PlannerShiftsViewSet,ChangeReasonViewSet,CalendarDayViewSet,WorkingFundAPIView, WorkedHoursAPIView,SaturdaySundayHoursApiView,WeekendHoursApiView,HolidayHoursApiView,CompareHoursApiView,TotalHoursApiView,NightShiftHoursApiView
 
 router=routers.DefaultRouter() 
 router.register(r'employees', EmployeesViewSet)
@@ -20,6 +20,8 @@ urlpatterns = [
     path('weekend_hours/<int:employee_id>/<int:year>/<int:month>/', WeekendHoursApiView.as_view(), name='weekend-hours'),
     path('holiday_hours/<int:employee_id>/<int:year>/<int:month>/', HolidayHoursApiView.as_view(), name='holiday-hours'),
     path('compare_hours/<int:employee_id>/<int:year>/<int:month>/', CompareHoursApiView.as_view(), name='compare-hours'),
+    path('total_hours/<int:employee_id>/<int:year>/<int:month>/', TotalHoursApiView.as_view(), name='total-hours'),
+    path('night_shift_hours/<int:employee_id>/<int:year>/<int:month>/', NightShiftHoursApiView.as_view(), name='night-shift-hours'),
 
 
 ] 
