@@ -5,5 +5,5 @@ class WorkTrackApiConfig(AppConfig):
     name = 'WorkTrackApi'
 
     def ready(self):
-        import WorkTrackApi.signals  # 👈 Načítanie signálov
-        from WorkTrackApi.utils.attendance_utils import handle_night_shift
+        # Načítanie signálov (aby fungovali triggery ako create_auth_token)
+        import WorkTrackApi.signals

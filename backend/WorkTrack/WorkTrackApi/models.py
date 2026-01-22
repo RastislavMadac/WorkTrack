@@ -54,11 +54,12 @@ class TypeShift(models.Model):
             MaxValueValidator(Decimal("24.0"), message="Trvanie nemôže byť viac ako 24 hodín")
         ]
     )
+    
     allow_variable_time = models.BooleanField(
         default=False,
         help_text="Ak je zapnuté, zamestnanec môže prísť a odísť kedykoľvek (napr. flexibilná smena)."
     )
-
+    shortName = models.CharField(max_length=2,default="ds")
     def __str__(self):
         return self.nameShift
 
@@ -77,6 +78,23 @@ class TypeShift(models.Model):
 
     def save(self, *args, **kwargs):
         self.full_clean()  # spustí clean() pred uložením
+
+         # prepočítavaj iba pre typ smeny s ID 22
+        if self.pk == 22:  
+            start_dt = datetime.combine(datetime.today(), self.start_time)
+            end_dt = datetime.combine(datetime.today(), self.end_time)
+
+            # ak smena ide cez polnoc (napr. 22:00 → 06:00)
+            if end_dt <= start_dt:
+                end_dt += timedelta(days=1)
+
+            duration = end_dt - start_dt
+            total_minutes = duration.seconds // 60
+            h = total_minutes // 60
+            m = total_minutes % 60
+
+            self.duration_time = f"{h:02d}:{m:02d}"
+
         super().save(*args, **kwargs)
 
 """emploee time at work"""
@@ -114,55 +132,6 @@ class Attendance(models.Model):
         return f"{self.user} - {self.date} ({self.custom_start} - {self.custom_end})"
 
 
-    # def save(self, *args, **kwargs):
-    #     # Overenie existencie pôvodného záznamu (update)
-    #     if self.pk:
-    #         # Načítaj pôvodný Attendance z DB
-    #         orig_attendance = Attendance.objects.get(pk=self.pk)
-
-    #         # Načítaj plánovanú smenu pre tento attendance (ak existuje)
-    #         orig_planned_shift = None
-    #         if self.planned_shift_id:
-    #             try:
-    #                 orig_planned_shift = PlannedShifts.objects.get(pk=self.planned_shift_id)
-    #             except PlannedShifts.DoesNotExist:
-    #                 orig_planned_shift = None
-
-            
-    #         # Ak sa mení dátum, aktualizuj calendar_day
-    #         if self.date != orig_attendance.date:
-    #             try:
-    #                 self.calendar_day = CalendarDay.objects.get(date=self.date)
-    #             except CalendarDay.DoesNotExist:
-    #                 raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
-
-    #     else:
-    #         # Pri vytváraní novej Attendance nastav calendar_day podľa dátumu
-    #         if self.date and not self.calendar_day:
-    #             try:
-    #                 self.calendar_day = CalendarDay.objects.get(date=self.date)
-    #             except CalendarDay.DoesNotExist:
-    #                 raise ValidationError(f"CalendarDay pre dátum {self.date} neexistuje.")
-
-    #     # Ak attendance nemá custom časy, môžeš ich nastaviť podľa type_shift (ak existuje)
-    #     if self.type_shift:
-    #         if not self.custom_start:
-    #             self.custom_start = self.type_shift.start_time
-    #         if not self.custom_end:
-    #             self.custom_end = self.type_shift.end_time
-
-    #     # Validácia časov custom_start a custom_end
-    #     if self.custom_start and self.custom_end:
-    #         start = datetime.combine(date.today(), self.custom_start)
-    #         end = datetime.combine(date.today(), self.custom_end)
-    #         if end <= start:
-    #             end += timedelta(days=1)
-    #             if end <= start:
-    #                 raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
-
-    #     # Volaj rodičovské save
-    #     super().save(*args, **kwargs)
-    #     print(f"Uložil sa Attendance pre user {self.user} na dátum {self.date}")
     def save(self, *args, **kwargs):
         # Pri update aktualizuj calendar_day, ak sa mení dátum
         if self.pk:
@@ -198,7 +167,7 @@ class Attendance(models.Model):
                     raise ValidationError("Koniec smeny musí byť po začiatku (alebo správna nočná smena).")
 
         super().save(*args, **kwargs)
-        print(f"Uložil sa Attendance pre user {self.user} na dátum {self.date}")
+       
 
    
     
@@ -221,70 +190,61 @@ class ChangeReason(models.Model):
 """planned shifts"""
 
 
+# class PlannedShifts(models.Model):
+#     user = models.ForeignKey(Employees, on_delete=models.CASCADE,related_name='planned_shifts')
+#     date = models.DateField(null=True, blank=True)
+#     type_shift = models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
+#     custom_start = models.TimeField(null=True, blank=True)
+#     custom_end = models.TimeField(null=True, blank=True)
+#     note = models.TextField(blank=True)
+#     transferred = models.BooleanField(default=False)
+#     is_changed = models.BooleanField(default=False)
+#     hidden = models.BooleanField(default=False)
+#     change_reason = models.ForeignKey('WorkTrackApi.ChangeReason',on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
+#     calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="calendar_day",null=True, blank=True)
+   
+#     class Meta:
+#       unique_together = ('user', 'date', 'custom_start', 'custom_end')
+
+#     def __str__(self):
+#         return f"{self.user} {self.type_shift}"
+#NOTE - nEW
 class PlannedShifts(models.Model):
-    user = models.ForeignKey(Employees, on_delete=models.CASCADE)
+    user = models.ForeignKey('WorkTrackApi.Employees', on_delete=models.CASCADE, related_name='planned_shifts')
     date = models.DateField(null=True, blank=True)
-    type_shift = models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
+    type_shift = models.ForeignKey('WorkTrackApi.TypeShift', null=True, blank=True, on_delete=models.SET_NULL)
+    
+    # Časy smeny (ak sa líšia od defaultu v type_shift)
     custom_start = models.TimeField(null=True, blank=True)
     custom_end = models.TimeField(null=True, blank=True)
+    
     note = models.TextField(blank=True)
-    transferred = models.BooleanField(default=False)
+    
+    # Stavové polia
+    transferred = models.BooleanField(default=False) # Či už bola preklopená do dochádzky
     is_changed = models.BooleanField(default=False)
-    hidden = models.BooleanField(default=False)
-    change_reason = models.ForeignKey('WorkTrackApi.ChangeReason',on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
-    calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="calendar_day",null=True, blank=True)
+    hidden = models.BooleanField(default=False) # Soft delete
+    
+    change_reason = models.ForeignKey('WorkTrackApi.ChangeReason', on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
+    calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="planned_calendar_day", null=True, blank=True)
    
     class Meta:
-      unique_together = ('user', 'date', 'custom_start', 'custom_end')
+        # Povolíme viac záznamov na deň? Ak nie, nechaj toto. 
+        # Ak chceš, aby mal rannú a potom nočnú v ten istý deň, toto treba zmazať.
+        unique_together = ('user', 'date', 'custom_start', 'custom_end')
 
     def __str__(self):
-        return f"{self.user} {self.type_shift}"
+        return f"{self.user} - {self.date} ({self.type_shift})"
 
-    # def save(self, *args, **kwargs):
-    #     print(f"DEBUG PlannedShifts.save(): pk={self.pk}, user={self.user}, type_shift_id={self.type_shift_id}")
-    #     print(f"DEBUG PlannedShifts.save(): custom_start={self.custom_start}, custom_end={self.custom_end}")
-    #     print(f"🟡 Pred save(): custom_start={self.custom_start}, custom_end={self.custom_end}, type_shift={self.type_shift}")
-
-    #     is_update = bool(self.pk)
-    #     orig = None
-
-    #     if is_update:
-    #         try:
-    #             orig = PlannedShifts.objects.get(pk=self.pk)
-    #         except PlannedShifts.DoesNotExist:
-    #             print("⚠️ Smena s týmto PK ešte neexistuje – preskakujem kontrolu pôvodných hodnôt.")
-
-    #     # 🔐 Ochrana pred nepovolenými zmenami plánovanej smeny (typ != 22)
-    #     if orig and self.type_shift_id != 22:
-    #         role = getattr(self.user, "role", None)
-
-    #         # 🕵️‍♂️ Debug výstup
-    #         print(f"🔍 Kontrola zmeny času: pôvodný=({orig.custom_start}-{orig.custom_end}), nový=({self.custom_start}-{self.custom_end}), rola={role}")
-
-    #         if role not in ["admin", "manager"]:
-    #             if self.custom_start != orig.custom_start:
-    #                 raise ValidationError("Zmena časov plánovanej smeny nie je povolená (začiatok).")
-    #             if self.custom_end != orig.custom_end:
-    #                 raise ValidationError("Zmena časov plánovanej smeny nie je povolená (koniec).")
-
-    #     # 🗓️ Nastavenie calendar_day ak chýba
-    #     if self.date and not self.calendar_day:
-    #         try:
-    #             self.calendar_day = CalendarDay.objects.get(date=self.date)
-    #         except CalendarDay.DoesNotExist:
-    #             raise ValidationError(f"Pre dátum {self.date} neexistuje CalendarDay.")
-
-    #     # 🕒 Automatické doplnenie časov z type_shift
-    #     if self.type_shift:
-    #         if not self.custom_start:
-    #             self.custom_start = self.type_shift.start_time
-    #         if not self.custom_end:
-    #             self.custom_end = self.type_shift.end_time
-
-    #     super().save(*args, **kwargs)
-    #     print(f"✅ Uložená smena pre dátum {self.date}, custom_start={self.custom_start}, custom_end={self.custom_end}, typ={self.type_shift_id}")
-
-
+    def save(self, *args, **kwargs):
+        # Automatické priradenie CalendarDay podľa dátumu
+        if self.date and not self.calendar_day:
+            from WorkTrackApi.models import CalendarDay
+            try:
+                self.calendar_day = CalendarDay.objects.get(date=self.date)
+            except CalendarDay.DoesNotExist:
+                pass # Alebo raise ValidationError
+        super().save(*args, **kwargs) 
 
 
 

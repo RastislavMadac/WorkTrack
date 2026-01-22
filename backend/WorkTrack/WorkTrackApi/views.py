@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions,status
 from .models import Employees,TypeShift,Attendance,PlannedShifts,ChangeReason,CalendarDay
 from .serializers import EmployeesSerializer, TypeShiftSerializer, AttendanceSerializer, PlannedShiftsSerializer,ChangeReasonSerializers,CalendarDaySerializers
-from.services import calculate_working_fund,calculate_worked_hours,calculate_saturday_sunday_hours,calculate_weekend_hours,calculate_holiday_hours,compare_worked_time_working_fund,calculate_total_hours_with_transfer,calculate_night_shift_hours
+from.services import calculate_working_fund,calculate_worked_hours,calculate_saturday_sunday_hours,calculate_weekend_hours,calculate_holiday_hours,compare_worked_time_working_fund,calculate_total_hours_with_transfer,calculate_night_shift_hours, copy_monthly_plan,get_planned_monthly_summary
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import PermissionDenied
 from datetime import time, timedelta
@@ -10,8 +10,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from WorkTrackApi.utils.attendance_utils import split_night_planned_shift
 from django.utils.dateparse import parse_time
-
-
+from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
+from rest_framework import generics
+from .permissions import IsManagerOrReadOnly
 class BaseWorkedHoursAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -68,7 +72,46 @@ class NightShiftHoursApiView(BaseWorkedHoursAPIView):
     def calculate_hours(self, employee_id, year, month):
         return calculate_night_shift_hours(employee_id, year, month)
 
+class DashboardView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        return Response({"message": f"Ahoj {request.user.username}, toto je tvoj dashboard"})
+
+class TestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"message": "OK"})
+
+
+class ActiveUserListView(generics.ListAPIView):
+    serializer_class = EmployeesSerializer
+
+    def get_queryset(self):
+         return Employees.objects.all().prefetch_related('planned_shifts')
+
+class CurrentUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user  # to je používateľ, ktorý poslal platný token
+        serializer = EmployeesSerializer(user)
+        return Response(serializer.data)
+
+class CustomAuthToken(ObtainAuthToken):
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data,
+                                           context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user_id': user.id,
+            'username': user.username
+        })
 class EmployeesViewSet(viewsets.ModelViewSet):
     queryset = Employees.objects.all()
     serializer_class = EmployeesSerializer
@@ -207,66 +250,233 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role == 'worker' and instance.user != user:
             self.raise_function("zmazať")
-            print("Záznam bol zmazaný")
+            
         instance.delete()
 
 
+# class PlannerShiftsViewSet(viewsets.ModelViewSet):
+#     queryset = PlannedShifts.objects.all()
+#     serializer_class = PlannedShiftsSerializer
+#     permission_classes = [permissions.IsAuthenticated]
+
+#     def get_queryset(self):
+#         user = self.request.user
+#         if user.role == 'worker':
+#             return PlannedShifts.objects.filter(user=user)
+#         return PlannedShifts.objects.all()
+
+#     def get_permissions(self):
+#         user = self.request.user
+#         if user.role == 'worker':
+#             # worker môže iba GET
+#             self.http_method_names = ['get', 'head', 'options']
+#         else:
+#             # admin a manažér môžu všetko
+#             self.http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
+#         return super().get_permissions()
+
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         if user.role == 'worker':
+#             raise PermissionDenied("Nemáte oprávnenie vytvárať smeny.")
+#         planned_shift = serializer.save()
+
+#         # Zavoláme rozdelenie iba ak je to nocná smena (id=20)
+#         if planned_shift.type_shift_id == 20:
+#             split_night_planned_shift(planned_shift)
+    
+#     def perform_update(self, serializer):
+#         planned_shift = serializer.save()
+#         if planned_shift.type_shift_id == 20:
+#             split_night_planned_shift(planned_shift)
+
+
+
+#     def destroy(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         user = request.user
+
+#         # Worker už metódu DELETE ani nevidí (get_permissions),
+#         # ale kontrolujeme aj pre manažéra
+#         if user.role == 'manager':
+#             if instance.user != user:
+#                 raise PermissionDenied("Nemáte oprávnenie zmazať túto smenu.")
+
+#         # Admin môže všetko
+#         self.perform_destroy(instance)
+#         return Response(
+#             {"detail": "Záznam bol úspešne vymazaný."},
+#         status=status.HTTP_200_OK
+#     )
+#NOTE - nEW
 class PlannerShiftsViewSet(viewsets.ModelViewSet):
     queryset = PlannedShifts.objects.all()
     serializer_class = PlannedShiftsSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsManagerOrReadOnly]
 
     def get_queryset(self):
+        """
+        Filtrovanie smien. Worker vidí len svoje, Manager/Admin podľa parametrov.
+        """
         user = self.request.user
-        if user.role == 'worker':
-            return PlannedShifts.objects.filter(user=user)
-        return PlannedShifts.objects.all()
+        
+        # Ochrana pre prípad, že user nie je prihlásený (aby nezhavaroval kód nižšie)
+        if user.is_anonymous:
+            return PlannedShifts.objects.none()
 
-    def get_permissions(self):
-        user = self.request.user
         if user.role == 'worker':
-            # worker môže iba GET
-            self.http_method_names = ['get', 'head', 'options']
-        else:
-            # admin a manažér môžu všetko
-            self.http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
-        return super().get_permissions()
+            return PlannedShifts.objects.filter(user=user, hidden=False)
+        
+        # Pre Managera/Admina: Filtrovanie podľa URL parametrov
+        # Príklad: /api/plannedshift/?user=1&year=2025&month=4
+        queryset = PlannedShifts.objects.filter(hidden=False) # Nezobrazujeme zmazané
+        
+        month = self.request.query_params.get('month')
+        year = self.request.query_params.get('year')
+        user_id = self.request.query_params.get('user')
+        
+        if month and year:
+            queryset = queryset.filter(date__year=year, date__month=month)
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+            
+        return queryset
+
+   
+
+    def create(self, request, *args, **kwargs):
+        """
+        Podporuje vytvorenie jednej smeny (objekt) alebo viacerých smien naraz (zoznam).
+        """
+        # Zistíme, či prišiel zoznam [] alebo jeden objekt {}
+        is_many = isinstance(request.data, list)
+        
+        # Inicializujeme serializer
+        serializer = self.get_serializer(data=request.data, many=is_many)
+        
+        # Validácia (prebehne pre každú položku v zozname)
+        serializer.is_valid(raise_exception=True)
+        
+    
+
+        self.perform_create(serializer)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    # 2. NOVÁ AKCIA: KOPÍROVANIE PLÁNU
+    @action(detail=False, methods=['post'])
+    def copy_plan(self, request):
+        """
+        Skopíruje plán.
+        Body JSON: { 
+            "source_year": 2025, "source_month": 4, 
+            "target_year": 2025, "target_month": 5, 
+            "user_id": 1 (voliteľné)
+        }
+        """
+        s_year = request.data.get('source_year')
+        s_month = request.data.get('source_month')
+        t_year = request.data.get('target_year')
+        t_month = request.data.get('target_month')
+        user_id = request.data.get('user_id') # Ak null, kopíruje všetkých
+
+        if not all([s_year, s_month, t_year, t_month]):
+            return Response({"error": "Chýbajú povinné údaje (roky a mesiace)."}, status=400)
+
+        # Zavoláme service
+        result = copy_monthly_plan(int(s_year), int(s_month), int(t_year), int(t_month), user_id)
+        
+        return Response({
+            "detail": f"Plán úspešne skopírovaný.",
+            "stats": result
+        }, status=200)
 
     def perform_create(self, serializer):
-        user = self.request.user
-        if user.role == 'worker':
-            raise PermissionDenied("Nemáte oprávnenie vytvárať smeny.")
-        planned_shift = serializer.save()
+        
+        
+        serializer.save()
 
-        # Zavoláme rozdelenie iba ak je to nocná smena (id=20)
-        if planned_shift.type_shift_id == 20:
-            split_night_planned_shift(planned_shift)
-    
-    def perform_update(self, serializer):
-        planned_shift = serializer.save()
-        if planned_shift.type_shift_id == 20:
-            split_night_planned_shift(planned_shift)
+    @action(detail=False, methods=['post'])
+    def copy_plan(self, request):
+        """
+        Skopíruje plán.
+        Body JSON: { 
+            "source_year": 2025, "source_month": 4, 
+            "target_year": 2025, "target_month": 5, 
+            "user_id": 1 (voliteľné)
+        }
+        """
+        # --- TU BOLA CHYBA: Musíme načítať VŠETKY premenné ---
+        s_year = request.data.get('source_year')
+        s_month = request.data.get('source_month')  # <--- Toto chýbalo
+        t_year = request.data.get('target_year')    # <--- Toto chýbalo
+        t_month = request.data.get('target_month')  # <--- Toto chýbalo
+        user_id = request.data.get('user_id')
 
+        # Teraz už premenné existujú, takže podmienka prejde
+        if not all([s_year, s_month, t_year, t_month]):
+            return Response(
+                {"error": "Chýbajú povinné údaje (roky a mesiace)."}, 
+                status=400
+            )
 
+        try:
+            # Zavoláme service (nezabudni importovať copy_monthly_plan hore!)
+            result = copy_monthly_plan(int(s_year), int(s_month), int(t_year), int(t_month), user_id)
+            
+            return Response({
+                "detail": "Plán úspešne skopírovaný.",
+                "stats": result
+            }, status=200)
+            
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+    @action(detail=False, methods=['get'], url_path='summary/...')
+    def monthly_summary(self, request, user_id=None, year=None, month=None):
+        if not user_id or not year or not month:
+            # --- CHYBA 400: SUMÁR ---
+            return Response(
+                {"error": "Chýbajú parametre user_id, year alebo month"}, 
+                status=400
+            )
 
     def destroy(self, request, *args, **kwargs):
+        """
+        Soft-delete: Namiesto vymazania z DB len nastavíme hidden=True.
+        """
         instance = self.get_object()
         user = request.user
+        
+        # Tu môžeš pridať podmienku, ak manažér nemôže mazať všetko
+        if user.role == 'manager' and instance.user != user:
+             # Napr. raise PermissionDenied... zatiaľ povolené
+             pass 
+        
+        # Soft-delete
+        instance.hidden = True
+        instance.save()
+        
+        return Response({"detail": "Smena bola úspešne odstránená (skrytá)."}, status=status.HTTP_200_OK)
 
-        # Worker už metódu DELETE ani nevidí (get_permissions),
-        # ale kontrolujeme aj pre manažéra
-        if user.role == 'manager':
-            if instance.user != user:
-                raise PermissionDenied("Nemáte oprávnenie zmazať túto smenu.")
+    # --- NOVÁ AKCIA PRE SUMÁR PLÁNU ---
+    @action(detail=False, methods=['get'], url_path='summary/(?P<user_id>\d+)/(?P<year>\d+)/(?P<month>\d+)')
+    def monthly_summary(self, request, user_id=None, year=None, month=None):
+        """
+        Vráti informatívne súčty pre plánovač (Fond, Nočné, Víkendy...).
+        URL volanie: /api/plannedshift/summary/1/2025/4/
+        """
+        # Validácia vstupov
+        if not user_id or not year or not month:
+            return Response({"error": "Chýbajú parametre user_id, year alebo month"}, status=400)
 
-        # Admin môže všetko
-        self.perform_destroy(instance)
-        return Response(
-            {"detail": "Záznam bol úspešne vymazaný."},
-        status=status.HTTP_200_OK
-    )
-
-
+        try:
+            # Zavoláme funkciu zo services.py
+            summary_data = get_planned_monthly_summary(int(user_id), int(year), int(month))
+            return Response(summary_data)
+        except Exception as e:
+            # Ak nastane neočakávaná chyba vo výpočte
+            return Response({"error": str(e)}, status=500)
 class ChangeReasonViewSet(viewsets.ModelViewSet):
     queryset = ChangeReason.objects.all()
     serializer_class = ChangeReasonSerializers

@@ -1,7 +1,12 @@
-from datetime import datetime, date, timedelta,time
+from datetime import datetime, date, timedelta, time
 from calendar import monthrange
-from WorkTrackApi.models import CalendarDay, Attendance
-from django.db.models import Q
+from collections import defaultdict
+from django.db.models import Q, Sum
+from .models import CalendarDay, Attendance, PlannedShifts
+
+# ==========================================
+# POMOCNÉ FUNKCIE (Dátumy)
+# ==========================================
 
 def get_previous_month(year: int, month: int) -> tuple[int, int]:
     if month == 1:
@@ -9,23 +14,23 @@ def get_previous_month(year: int, month: int) -> tuple[int, int]:
     else:
         return year, month - 1
 
+def get_next_month(year: int, month: int) -> tuple[int, int]:
+    if month == 12:
+        return year + 1, 1
+    return year, month + 1
+
+# ==========================================
+# PÔVODNÉ FUNKCIE (Pre Attendance/Dochádzku)
+# ==========================================
+
 def calculate_working_fund(year: int, month: int, hours_per_day: float = 8.0) -> float:
-    # Získaj všetky dni v mesiaci
     start_date = date(year, month, 1)
     end_date = date(year, month, monthrange(year, month)[1])
     
     days = CalendarDay.objects.filter(date__range=(start_date, end_date))
-    
-    # Počítaj len tie dni, ktoré nie sú víkend ani sviatok
     working_days = days.filter(is_weekend=False, is_holiday=False).count()
     
-    # Fond = pracovné dni × pracovné hodiny denne
     return working_days * hours_per_day
-
-fond = calculate_working_fund(2025, 7)
-print(f"Fond za júl 2025: {fond} hodín")
-
-
 
 def calculate_worked_hours(employee_id: int, year: int, month: int) -> float:
     start_date = date(year, month, 1)
@@ -38,12 +43,10 @@ def calculate_worked_hours(employee_id: int, year: int, month: int) -> float:
     
     total_seconds = 0
     for att in attendances:
-        # Použij custom_start/custom_end ak sú, inak z plánovanej smeny
         start_time = att.custom_start
         end_time = att.custom_end
         
         if start_time is None or end_time is None:
-            # ak chýbajú custom časy, použijeme type_shift časy
             if att.type_shift:
                 start_time = att.type_shift.start_time
                 end_time = att.type_shift.end_time
@@ -52,7 +55,6 @@ def calculate_worked_hours(employee_id: int, year: int, month: int) -> float:
             start_dt = datetime.combine(att.date, start_time)
             end_dt = datetime.combine(att.date, end_time)
             if end_dt < start_dt:
-                # nočná služba alebo prechod cez polnoc
                 end_dt += timedelta(days=1)
             
             duration = (end_dt - start_dt).total_seconds()
@@ -60,44 +62,28 @@ def calculate_worked_hours(employee_id: int, year: int, month: int) -> float:
 
     return total_seconds / 3600
 
-test=calculate_worked_hours(1, 2025, 7)
-print(f"Odpracovane hodiny za júl {test} hodín")
-
 def compare_worked_time_working_fund(employee_id: int, year: int, month: int):
-    # Fond pracovného času (napr. z CalendarDay)
     v1 = calculate_working_fund(year, month)
-
-    # Odpracované hodiny (napr. z Attendance)
     v2 = calculate_worked_hours(employee_id, year, month)
-
     rozdiel = v2 - v1
     return {
         "fond": v1,
         "odpracovane": v2,
         "rozdiel": rozdiel
-       }
+    }
 
-result = compare_worked_time_working_fund(1, 2025, 7)
-print(f"Fond: {result['fond']} h")
-print(f"Odpracované: {result['odpracovane']} h")
-print(f"Rozdiel: {result['rozdiel']:+.2f} h")
-
-#Odpracovane hodiny za sobotu aj za nedelu
 def calculate_saturday_sunday_hours(employee_id: int, year: int, month: int) -> dict:
     start_date = date(year, month, 1)
     end_date = date(year, month, monthrange(year, month)[1])
 
-    # Získaj všetky víkendové dni z kalendára
     weekend_days = CalendarDay.objects.filter(
         date__range=(start_date, end_date),
         is_weekend=True
     )
 
-    # Rozdeľ dátumy na soboty a nedele
     saturdays = [day.date for day in weekend_days if day.date.weekday() == 5]
     sundays = [day.date for day in weekend_days if day.date.weekday() == 6]
 
-    # Načítaj dochádzku v týchto dátumoch
     attendances = Attendance.objects.filter(
         user_id=employee_id,
         date__in=saturdays + sundays
@@ -123,7 +109,6 @@ def calculate_saturday_sunday_hours(employee_id: int, year: int, month: int) -> 
 
             duration = (end_dt - start_dt).total_seconds()
 
-            # Priradíme podľa dňa
             if att.date in saturdays:
                 saturday_seconds += duration
             elif att.date in sundays:
@@ -133,25 +118,16 @@ def calculate_saturday_sunday_hours(employee_id: int, year: int, month: int) -> 
         "saturday_hours": saturday_seconds / 3600,
         "sunday_hours": sunday_seconds / 3600
     }
-result = calculate_saturday_sunday_hours(1, 2025, 7)
-print(f"Odpracované hodiny za júl 2025:")
-print(f"  - Sobota: {result['saturday_hours']:.2f} hodín")
-print(f"  - Nedeľa: {result['sunday_hours']:.2f} hodín")
 
-
-
-# odpracovane hodiny za výkend
 def calculate_weekend_hours(employee_id: int, year: int, month: int) -> float:
     start_date = date(year, month, 1)
     end_date = date(year, month, monthrange(year, month)[1])
 
-    # Vyber víkendové dni z kalendára pre daný mesiac
     weekend_days = CalendarDay.objects.filter(
         date__range=(start_date, end_date),
         is_weekend=True
     ).values_list('date', flat=True)
 
-    # Záznamy dochádzky iba na víkendové dni
     attendances = Attendance.objects.filter(
         user_id=employee_id,
         date__in=weekend_days
@@ -159,41 +135,27 @@ def calculate_weekend_hours(employee_id: int, year: int, month: int) -> float:
 
     total_seconds = 0
     for att in attendances:
-        start_time = att.custom_start
-        end_time = att.custom_end
-
-        if start_time is None or end_time is None:
-            if att.type_shift:
-                start_time = att.type_shift.start_time
-                end_time = att.type_shift.end_time
+        start_time = att.custom_start or (att.type_shift.start_time if att.type_shift else None)
+        end_time = att.custom_end or (att.type_shift.end_time if att.type_shift else None)
 
         if start_time and end_time:
             start_dt = datetime.combine(att.date, start_time)
             end_dt = datetime.combine(att.date, end_time)
             if end_dt < start_dt:
                 end_dt += timedelta(days=1)
+            total_seconds += (end_dt - start_dt).total_seconds()
 
-            duration = (end_dt - start_dt).total_seconds()
-            total_seconds += duration
+    return {"weekend hours": total_seconds / 3600}
 
-    return {"weekend hours": total_seconds / 3600}  # hodiny
-
-vikend_hodiny = calculate_weekend_hours(1, 2025, 7)
-print(f"Odpracované víkendové hodiny za júl 2025: {vikend_hodiny['weekend hours']:.2f} hodín")
-
-
-# odpracovane hodiny za sviatok
 def calculate_holiday_hours(employee_id: int, year: int, month: int) -> float:
     start_date = date(year, month, 1)
     end_date = date(year, month, monthrange(year, month)[1])
 
-    # Vyber sviatkove dni z kalendára pre daný mesiac
     holiday_days = CalendarDay.objects.filter(
         date__range=(start_date, end_date),
         is_holiday=True
     ).values_list('date', flat=True)
 
-    # Záznamy dochádzky iba na víkendové dni
     attendances = Attendance.objects.filter(
         user_id=employee_id,
         date__in=holiday_days
@@ -201,50 +163,28 @@ def calculate_holiday_hours(employee_id: int, year: int, month: int) -> float:
 
     total_seconds = 0
     for att in attendances:
-        start_time = att.custom_start
-        end_time = att.custom_end
-
-        if start_time is None or end_time is None:
-            if att.type_shift:
-                start_time = att.type_shift.start_time
-                end_time = att.type_shift.end_time
+        start_time = att.custom_start or (att.type_shift.start_time if att.type_shift else None)
+        end_time = att.custom_end or (att.type_shift.end_time if att.type_shift else None)
 
         if start_time and end_time:
             start_dt = datetime.combine(att.date, start_time)
             end_dt = datetime.combine(att.date, end_time)
             if end_dt < start_dt:
                 end_dt += timedelta(days=1)
+            total_seconds += (end_dt - start_dt).total_seconds()
 
-            duration = (end_dt - start_dt).total_seconds()
-            total_seconds += duration
-
-    return {"holiday hours": total_seconds / 3600}  # hodiny
-
-sviatky_hodiny = calculate_holiday_hours(1, 2025, 7)
-print(f"Odpracované sviatkové hodiny za júl 2025: {sviatky_hodiny['holiday hours']:.2f} hodín")
-
+    return {"holiday hours": total_seconds / 3600}
 
 def calculate_transferred_hours(employee_id: int, year: int, month: int) -> float:
-    # Získame všetky mesiace od nástupu zamestnanca po mesiac pred aktuálnym
-    from .models import Attendance  # prispôsob si podľa umiestnenia modelov
-
-    # Získaj prvý dochádzkový záznam daného zamestnanca
-    first_attendance = Attendance.objects.filter(
-      user_id=employee_id
-    ).order_by("date").first()
-
+    first_attendance = Attendance.objects.filter(user_id=employee_id).order_by("date").first()
     if not first_attendance:
-        # Zamestnanec nemá žiadne záznamy => nič sa neprenáša
         return 0.0
 
     start_year = first_attendance.date.year
     start_month = first_attendance.date.month
-
-    # Limituj koniec na predchádzajúci mesiac
     prev_year, prev_month = get_previous_month(year, month)
 
     prenesene = 0.0
-
     y, m = start_year, start_month
 
     while (y, m) <= (prev_year, prev_month):
@@ -252,42 +192,22 @@ def calculate_transferred_hours(employee_id: int, year: int, month: int) -> floa
         odpracovane = calculate_worked_hours(employee_id, y, m) or 0.0
         rozdiel = odpracovane - fond
         prenesene += rozdiel
-        y, m = get_next_month(y, m)  # pomocná funkcia, viď nižšie
+        y, m = get_next_month(y, m)
 
     return prenesene
-
-def get_next_month(year: int, month: int) -> tuple[int, int]:
-    if month == 12:
-        return year + 1, 1
-    return year, month + 1
-
-
 
 def calculate_total_hours_with_transfer(employee_id: int, year: int, month: int) -> dict:
     prenesene = calculate_transferred_hours(employee_id, year, month) or 0.0
     aktualne = calculate_worked_hours(employee_id, year, month) or 0.0
-
     spolu = prenesene + aktualne
-
     return {
         "prenesené_hodiny": prenesene,
         "odpracované_aktuálny_mesiac": aktualne,
         "spolu": spolu
     }
-print("spustam: calculate_total_hours_with_transfer")
-vysledok = calculate_total_hours_with_transfer(1, 2025, 7)
-print(f"Prenesené: {vysledok['prenesené_hodiny']:.2f} h")
-print(f"Odpracované tento mesiac: {vysledok['odpracované_aktuálny_mesiac']:.2f} h")
-print(f"Spolu: {vysledok['spolu']:.2f} h")
-
-
 
 def calculate_night_shift_hours(employee_id: int, year: int, month: int) -> float:
-    from collections import defaultdict
-
     total_night_hours = 0.0
-
-    # Načítame všetky dochádzky v rozšírenom rozsahu (aj deň pred mesiacom a deň po ňom)
     start_date = date(year, month, 1) - timedelta(days=1)
     end_date = date(year, month, monthrange(year, month)[1]) + timedelta(days=1)
 
@@ -296,14 +216,11 @@ def calculate_night_shift_hours(employee_id: int, year: int, month: int) -> floa
         date__range=(start_date, end_date)
     ).order_by('date', 'custom_start')
 
-    # Zoskupenie podľa dátumu začiatku nočnej smeny (21:00 predchádzajúceho dňa)
     grouped = defaultdict(list)
-
     for att in attendances:
         shift_date = att.date
         if att.custom_start and att.custom_start < time(12, 0):
             shift_date -= timedelta(days=1)
-
         grouped[shift_date].append(att)
 
     for shift_start_date, shift_attendances in grouped.items():
@@ -311,25 +228,19 @@ def calculate_night_shift_hours(employee_id: int, year: int, month: int) -> floa
         per_day_seconds = defaultdict(float)
 
         for att in shift_attendances:
-            start = att.custom_start
-            end = att.custom_end
-
-            if not start or not end:
-                if att.type_shift:
-                    start = start or att.type_shift.start_time
-                    end = end or att.type_shift.end_time
+            start = att.custom_start or (att.type_shift.start_time if att.type_shift else None)
+            end = att.custom_end or (att.type_shift.end_time if att.type_shift else None)
 
             if start and end:
                 start_dt = datetime.combine(att.date, start)
                 end_dt = datetime.combine(att.date, end)
-
                 if end_dt < start_dt:
                     end_dt += timedelta(days=1)
 
                 duration = (end_dt - start_dt).total_seconds()
                 total_seconds += duration
-
-                # Rozdeľ podľa dňa (a teda aj podľa mesiaca)
+                
+                # Rozdelenie podľa hodín pre presnosť
                 current = start_dt
                 while current < end_dt:
                     next_hour = min(end_dt, current + timedelta(hours=1))
@@ -337,16 +248,187 @@ def calculate_night_shift_hours(employee_id: int, year: int, month: int) -> floa
                     per_day_seconds[current.date()] += hour_duration
                     current = next_hour
 
-        # Ak je to úplná nočná smena
         if total_seconds >= 12 * 3600:
             for day, secs in per_day_seconds.items():
                 if day.month == month and day.year == year:
-                    # Pridáme iba tie hodiny, ktoré patria do daného mesiaca
-                    # Pomerný podiel z 8 hodín
                     portion = secs / total_seconds
                     total_night_hours += 8.0 * portion
 
     return round(total_night_hours, 2)
 
-nočne_hodiny = calculate_night_shift_hours(employee_id=1, year=2025, month=8)
-print(f"Odpracované nočné hodiny za júl 2025: {nočne_hodiny:.2f} h")
+# ==========================================
+# NOVÉ FUNKCIE (Pre PlannedShifts/Plánovač)
+# ==========================================
+#NOTE - nEW
+def get_planned_monthly_summary(user_id: int, year: int, month: int) -> dict:
+    """
+    Vypočíta sumár naplánovaných hodín pre daný mesiac (Fond, Odpracované, Víkendy, Nočné).
+    Rieši prechody cez polnoc aj prechody cez mesiace.
+    """
+    start_date = date(year, month, 1)
+    days_in_month = monthrange(year, month)[1]
+    end_date = date(year, month, days_in_month)
+    
+    search_start = start_date - timedelta(days=1)
+    search_end = end_date + timedelta(days=1)
+
+    shifts = PlannedShifts.objects.filter(
+        user_id=user_id,
+        date__range=(search_start, search_end),
+        hidden=False
+    ).select_related('type_shift', 'calendar_day')
+
+    stats = {
+        "odpracovane_hodiny": 0.0,
+        "nocne_hodiny": 0.0,      # NS
+        "vikendove_hodiny": 0.0,  # SN
+        "sviatkove_hodiny": 0.0,  # Sviatky
+        "dovolenka_hodiny": 0.0,  # D
+        "fond": 0.0,
+        "rozdiel": 0.0
+    }
+
+    for shift in shifts:
+        if not shift.type_shift:
+            continue
+
+        s_start = shift.custom_start or shift.type_shift.start_time
+        s_end = shift.custom_end or shift.type_shift.end_time
+        
+        # Ak chýbajú časy (napr. ID 22 bez času), skúsime použiť duration_time
+        if not s_start or not s_end:
+            if shift.type_shift.duration_time:
+                try:
+                    dur = float(shift.type_shift.duration_time)
+                    if shift.date.month == month and shift.date.year == year:
+                        stats["odpracovane_hodiny"] += dur
+                        if shift.type_shift.shortName == 'D' or shift.type_shift.id == 21:
+                            stats["dovolenka_hodiny"] += dur
+                except:
+                    pass
+            continue
+
+        # Výpočet s presnými časmi
+        start_dt = datetime.combine(shift.date, s_start)
+        end_dt = datetime.combine(shift.date, s_end)
+
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+
+        total_duration_seconds = (end_dt - start_dt).total_seconds()
+        
+        current = start_dt
+        while current < end_dt:
+            end_of_day = datetime.combine(current.date(), time.max)
+            next_step = min(end_dt, end_of_day + timedelta(seconds=1)) 
+            interval_seconds = (next_step - current).total_seconds()
+            
+            if current.month == month and current.year == year:
+                hours_value = interval_seconds / 3600.0
+                stats["odpracovane_hodiny"] += hours_value
+
+                if current.weekday() in [5, 6]: 
+                    stats["vikendove_hodiny"] += hours_value
+
+                try:
+                    c_day = CalendarDay.objects.get(date=current.date())
+                    if c_day.is_holiday:
+                        stats["sviatkove_hodiny"] += hours_value
+                except CalendarDay.DoesNotExist:
+                    pass
+
+                if shift.type_shift.id == 20 or shift.type_shift.shortName == 'Ns':
+                    if total_duration_seconds >= 12 * 3600:
+                        portion = interval_seconds / total_duration_seconds
+                        stats["nocne_hodiny"] += 8.0 * portion
+                    else:
+                        stats["nocne_hodiny"] += hours_value
+                
+                if shift.type_shift.id == 21 or shift.type_shift.shortName == 'D':
+                    stats["dovolenka_hodiny"] += hours_value
+
+            current = next_step
+
+    working_days = CalendarDay.objects.filter(
+        date__range=(start_date, end_date),
+        is_weekend=False, 
+        is_holiday=False
+    ).count()
+    stats["fond"] = working_days * 8.0 
+    stats["rozdiel"] = stats["odpracovane_hodiny"] - stats["fond"]
+
+    for k, v in stats.items():
+        stats[k] = round(v, 2)
+
+    return stats
+#NOTE - nEW
+def copy_monthly_plan(source_year, source_month, target_year, target_month, user_id=None):
+    """
+    Skopíruje plán smien.
+    - Ak je user_id zadané: kopíruje len jedného človeka.
+    - Ak user_id=None: kopíruje VŠETKÝCH zamestnancov naraz.
+    """
+    
+    # 1. Filtrovanie zdrojových smien
+    filters = {
+        'date__year': source_year,
+        'date__month': source_month,
+        'hidden': False
+    }
+    
+    # Ak user_id nie je None (ani 0, ani prázdny string), pridáme ho do filtra
+    if user_id:
+        filters['user_id'] = user_id
+        
+    source_shifts = PlannedShifts.objects.filter(**filters).select_related('type_shift')
+    
+    # Ak nie je čo kopírovať, končíme
+    if not source_shifts.exists():
+        return {"created": 0, "skipped": 0, "message": "V zdrojovom mesiaci nie sú žiadne smeny."}
+
+    new_shifts = []
+    skipped_count = 0
+    _, days_in_target = monthrange(target_year, target_month)
+
+    # 2. OPTIMALIZÁCIA: Načítame CalendarDay pre cieľový mesiac naraz
+    # Aby sme nerobili query v cykle (N+1 problém)
+    start_target = date(target_year, target_month, 1)
+    end_target = date(target_year, target_month, days_in_target)
+    
+    calendar_days = CalendarDay.objects.filter(date__range=(start_target, end_target))
+    # Vytvoríme mapu: { datum: objekt_dna } pre rýchle vyhľadávanie
+    calendar_map = {day.date: day for day in calendar_days}
+
+    # 3. Iterácia a vytváranie kópií
+    for shift in source_shifts:
+        day_num = shift.date.day
+        
+        # Ošetrenie: 31. deň do 30-dňového mesiaca neskopírujeme
+        if day_num > days_in_target:
+            skipped_count += 1
+            continue
+            
+        target_date = date(target_year, target_month, day_num)
+        
+        # Rýchle vytiahnutie z mapy (bez DB query)
+        c_day = calendar_map.get(target_date)
+
+        new_shift = PlannedShifts(
+            user=shift.user,          # Použije Usera zo zdrojovej smeny
+            date=target_date,
+            type_shift=shift.type_shift,
+            custom_start=shift.custom_start,
+            custom_end=shift.custom_end,
+            note=shift.note,
+            calendar_day=c_day
+        )
+        new_shifts.append(new_shift)
+
+    # 4. Hromadné uloženie do DB (jeden SQL príkaz)
+    if new_shifts:
+        PlannedShifts.objects.bulk_create(new_shifts)
+        
+    return {
+        "created": len(new_shifts),
+        "skipped": skipped_count
+    }

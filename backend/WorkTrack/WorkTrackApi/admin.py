@@ -71,7 +71,7 @@ class PlannedShiftsAdmin(admin.ModelAdmin):
 @admin.register(TypeShift)
 class TypeShiftsAdmin(admin.ModelAdmin):
     
-    list_display = ('id', 'nameShift', 'start_time', 'end_time', 'duration_time')
+    list_display = ('id', 'nameShift', 'start_time', 'end_time', 'duration_time','shortName')
     list_filter = ('id','nameShift')
 
 @admin.register(CalendarDay)
