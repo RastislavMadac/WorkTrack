@@ -26,7 +26,7 @@ class Employees(AbstractUser):
                                      )])
     
     ROLE_CHOICES=[
-         ('admin', 'Administrátor'),
+         ('admin', 'Administrátor' ),
         ('manager', 'Manažér'),
         ('worker', 'Zamestnanec'),
     ]
