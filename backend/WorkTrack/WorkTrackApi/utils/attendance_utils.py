@@ -1,54 +1,23 @@
-# utils/attendance_utils.py
-
 from datetime import datetime, timedelta, time
 from django.core.exceptions import ValidationError
 
+# ==========================================
+# ZÁKLADNÉ UTILITY
+# ==========================================
 
-def prevziat_smenu_logic(request_user, target_shift_id, user_id=None, note=None):
-    from WorkTrackApi.models import PlannedShifts, Attendance, Employees
-    try:
-        target_shift = PlannedShifts.objects.get(pk=target_shift_id)
-    except PlannedShifts.DoesNotExist:
-        return None, "Plánovaná smena neexistuje."
-
-    # Určíme používateľa, ktorý preberá smenu
-    if request_user.role in ['admin', 'manager'] and user_id:
-        try:
-            user_to_assign = Employees.objects.get(pk=user_id)
-        except Employees.DoesNotExist:
-            return None, "Používateľ neexistuje."
+def round_to_nearest_half_hour(t: time) -> time:
+    dt = datetime.combine(datetime.today(), t)
+    minute = dt.minute
+    down = minute % 30
+    up = 30 - down
+    if down < up:
+        dt_rounded = dt - timedelta(minutes=down)
     else:
-        user_to_assign = request_user
-
-    attendance = Attendance.objects.create(
-        user=user_to_assign,
-        date=target_shift.date,
-        type_shift=target_shift.type_shift,
-        custom_start=target_shift.custom_start,
-        custom_end=target_shift.custom_end,
-        note=note or f"Preberám smenu od {target_shift.user}",
-    )
-
-    # Tu voláme metódy podľa tvojho modelu
-    attendance.exchange_shift(target_shift)
-    attendance.create_planned_shift(attendance)
-
-    return attendance, None
+        dt_rounded = dt + timedelta(minutes=up)
+    return dt_rounded.time()
 
 def create_attendance_from_planned_shift(user, date, planned_shift_id):
     from WorkTrackApi.models import PlannedShifts, Attendance
-    """
-    Vytvorí Attendance pre daného používateľa a dátum na základe plánovanej smeny.
-
-    Args:
-        user: používateľ (zamestnanec)
-        date: dátum (datetime.date alebo string YYYY-MM-DD)
-        planned_shift_id: ID plánovanej smeny, ktorú má použiť
-
-    Returns:
-        attendance objekt, alebo None ak sa nenašla platná plánovaná smena
-    """
-
     planned_shift = PlannedShifts.objects.filter(
         id=planned_shift_id,
         user=user,
@@ -66,355 +35,42 @@ def create_attendance_from_planned_shift(user, date, planned_shift_id):
         custom_end=planned_shift.custom_end,
         type_shift=planned_shift.type_shift,
         planned_shift=planned_shift,
-        note=planned_shift.note or "Vytvorená dochácka na základe plôanovanej smeny",
+        note=planned_shift.note or "Vytvorená dochádzka na základe plánovanej smeny",
     )
     return attendance
 
-def round_to_nearest_half_hour(t: time) -> time:
-    """
-    Zaokrúhli čas na najbližšiu polhodinu (nahor alebo nadol).
-    """
-    dt = datetime.combine(datetime.today(), t)
-    minute = dt.minute
-    down = minute % 30
-    up = 30 - down
-
-    if down < up:
-        dt_rounded = dt - timedelta(minutes=down)
-    else:
-        dt_rounded = dt + timedelta(minutes=up)
-
-    return dt_rounded.time()
-
-
-def create_extra_attendance(user, date, start, end, reason=""):
-    from WorkTrackApi.models import Attendance, TypeShift  # ⬅ LAZY IMPORT
-
-    """
-    Vytvorí nový Attendance záznam mimo plánovanej smeny.
-    Používa TypeShift s ID=22 (extra smena).
-    """
-    extra_shift_type = TypeShift.objects.get(id=22)
-    att = Attendance(
-        user=user,
-        date=date,
-        custom_start=start,
-        custom_end=end,
-        type_shift=extra_shift_type,
-        note=reason or "Automatický záznam mimo plán"
-    )
-    att.save(skip_extra_attendance=True)
-    return att
-
-
-
-
-def reset_auto_changed_attendance(user, target_date):
-    from WorkTrackApi.models import PlannedShifts  # ⬅ LAZY IMPORT
-    """
-    Vyčistí automaticky generované záznamy v PlannedShifts.
-    Týka sa len tých, ktoré obsahujú poznámku "Chýbajúca dochádzka k plánovanej smene"
-    """
-    auto_records = PlannedShifts.objects.filter(
-        user=user,
-        date=target_date,
-        hidden=False,
-        is_changed=True,
-        note__icontains="Chýbajúca dochádzka k plánovanej smene"
-    )
-    updated_count = auto_records.update(is_changed=False, note="")
-    print(f"🔁 Resetovaných {updated_count} automatických záznamov.")
-"""vytvarame json na vytvorenie plannedshift s nocnou smenou """
-
-def handle_night_shift(attendance):
-    from WorkTrackApi.models import Attendance  # ⬅ LAZY IMPORT
-    """
-    POUZIVA SA
-    Rozdelí nočnú 12h smenu (21:00–09:00) na dve časti:
-    - dnes: 21:00–00:00 (koniec = 0:00)
-    - zajtra: 00:00–09:00 (nový Attendance)
-    Používa sa iba pre typ smeny ID=20.
-    """
-    if attendance.type_shift and attendance.type_shift.id == 20:
-        attendance.custom_end = time(0, 0)
-        attendance.save()
-
-        next_day = attendance.date + timedelta(days=1)
-
-        Attendance.objects.create(
-            user=attendance.user,
-            date=next_day,
-            type_shift=attendance.type_shift,
-            custom_start=time(0, 0),
-            custom_end=time(9, 0),
-            note="Pokračovanie nočnej smeny"
-        )
-        print(f"🌙 Nočná smena rozdelená pre {attendance.user}")
-
-
-def add_calendar_day(attendance):
-    from WorkTrackApi.models import CalendarDay  # ⬅ LAZY IMPORT
-    """
-    Priradí k Attendance objektu záznam z CalendarDay podľa dátumu.
-    Používa sa ak calendar_day ešte nie je nastavený.
-    """
-    if not attendance.calendar_day:
-        cal = CalendarDay.objects.filter(date=attendance.date).first()
-        if cal:
-            attendance.calendar_day = cal
-
-
-# WorkTrackApi/utils/attendance_utils.py
-
-def handle_any_shift_time(attendance_instance):
-    from WorkTrackApi.models import Attendance, PlannedShifts, TypeShift, ChangeReason
-
+def prevziat_smenu_logic(request_user, target_shift_id, user_id=None, note=None):
+    from WorkTrackApi.models import PlannedShifts, Attendance, Employees
     try:
-        change_reason_obj = ChangeReason.objects.filter(category="cdr").first()
-        if not change_reason_obj:
-            print("⚠️ Chýba ChangeReason pre 'cdr'")
+        target_shift = PlannedShifts.objects.get(pk=target_shift_id)
+    except PlannedShifts.DoesNotExist:
+        return None, "Plánovaná smena neexistuje."
 
-        plan = PlannedShifts.objects.filter(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            hidden=False
-        ).first()
-
-        if not plan:
-            print("⚠️ Nenájdená plánovaná smena pre daný deň a užívateľa")
-            return
-
-        type_shift_extra = TypeShift.objects.get(id=22)  # "extra" zmena
-
-        # --- Skorší príchod ---
-        if attendance_instance.custom_start and attendance_instance.custom_start < plan.custom_start:
-            start = attendance_instance.custom_start
-            end = plan.custom_start
-
-            if not PlannedShifts.objects.filter(
-                user=plan.user, date=plan.date,
-                custom_start=start, custom_end=end,
-                type_shift=type_shift_extra
-            ).exists():
-                new_plan = PlannedShifts.objects.create(
-                    user=plan.user,
-                    date=plan.date,
-                    custom_start=start,
-                    custom_end=end,
-                    type_shift=type_shift_extra,
-                    transferred=True,
-                    is_changed=True,
-                    change_reason=change_reason_obj,
-                    note="Skorší príchod - extra čas"
-                )
-                print(f"🟢 Vytvorený extra plán: {start} - {end}")
-
-                Attendance.objects.create(
-                    user=plan.user,
-                    date=plan.date,
-                    planned_shift=new_plan,
-                    custom_start=start,
-                    custom_end=end,
-                    type_shift=type_shift_extra,
-                    note="Automaticky vytvorený skorší príchod"
-                )
-                print(f"🟢 Vytvorený extra attendance: {start} - {end}")
-
-        # --- Neskorší odchod ---
-        if attendance_instance.custom_end and attendance_instance.custom_end > plan.custom_end:
-            start = plan.custom_end
-            end = attendance_instance.custom_end
-
-            if not PlannedShifts.objects.filter(
-                user=plan.user, date=plan.date,
-                custom_start=start, custom_end=end,
-                type_shift=type_shift_extra
-            ).exists():
-                new_plan = PlannedShifts.objects.create(
-                    user=plan.user,
-                    date=plan.date,
-                    custom_start=start,
-                    custom_end=end,
-                    type_shift=type_shift_extra,
-                    transferred=True,
-                    is_changed=True,
-                    change_reason=change_reason_obj,
-                    note="Neskorší odchod - extra čas"
-                )
-                print(f"🟢 Vytvorený extra plán: {start} - {end}")
-
-                Attendance.objects.create(
-                    user=plan.user,
-                    date=plan.date,
-                    planned_shift=new_plan,
-                    custom_start=start,
-                    custom_end=end,
-                    type_shift=type_shift_extra,
-                    note="Automaticky vytvorený neskorší odchod"
-                )
-                print(f"🟢 Vytvorený extra attendance: {start} - {end}")
-
-        # ** Nepretriedzujem hlavný attendance späť na pôvodný plánovaný čas **
-        # pretože to často spôsobuje nežiaduce prepisovanie údajov
-
-    except Exception as e:
-        print(f"🛑 Chyba v handle_any_shift_time: {e}")
-
-
-def handle_start_shift_time(attendance_instance):
-    from WorkTrackApi.models import PlannedShifts, Attendance, TypeShift
-
-    # Nájde pôvodnú plánovanú smenu
-    planned_shift = PlannedShifts.objects.filter(
-        hidden=False,
-        user=attendance_instance.user,
-        date=attendance_instance.date
-    ).order_by("custom_end").first()
-
-    if not planned_shift:
-        print("❌ Žiadna plánovaná smena")
-        return
-
-    print(f"DEBUG: Attendance start={attendance_instance.custom_start}, PlannedShift start={planned_shift.custom_start}")
-
-    # Ak sa začiatok líši od plánovanej smeny → vytvoríme novú smenu pre skorší čas
-    if attendance_instance.custom_start and attendance_instance.custom_start != planned_shift.custom_start:
+    if request_user.role in ['admin', 'manager'] and user_id:
         try:
-            type_shift_obj = TypeShift.objects.get(id=22)
-        except TypeShift.DoesNotExist:
-            print("⚠️ Typ smeny (id=22) neexistuje!")
-            return
-
-        # Overíme, či podobná neplánovaná smena už neexistuje
-        if PlannedShifts.objects.filter(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            custom_start=attendance_instance.custom_start,
-            custom_end=planned_shift.custom_start,
-            type_shift=type_shift_obj
-        ).exists():
-            print("⚠️ Podobná neplánovaná smena už existuje – preskakujem.")
-            return
-
-        print(f"🟢 Vytváram PlannedShift {attendance_instance.custom_start} - {planned_shift.custom_start}")
-
-        # 1️⃣ Vytvor novú PlannedShift
-        new_planned_shift = PlannedShifts.objects.create(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            custom_start=attendance_instance.custom_start,
-            custom_end=planned_shift.custom_start,
-            type_shift=type_shift_obj,
-            transferred=True,
-            is_changed=True,
-            note="⚠️ Neplánovaná zmena času – treba zadať dôvod!",
-            calendar_day=planned_shift.calendar_day,
-        )
-
-        # 2️⃣ Vytvor k nej Attendance
-        Attendance.objects.create(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            planned_shift=new_planned_shift,  # <- priradené ID
-            custom_start=new_planned_shift.custom_start,
-            custom_end=new_planned_shift.custom_end,
-            type_shift=type_shift_obj,
-            note="✅ Automaticky vytvorené pre skorší príchod",
-            calendar_day=new_planned_shift.calendar_day,
-        )
-
-        print(f"✅ Vytvorený nový Attendance pre {attendance_instance.custom_start} - {planned_shift.custom_start}")
-
+            user_to_assign = Employees.objects.get(pk=user_id)
+        except Employees.DoesNotExist:
+            return None, "Používateľ neexistuje."
     else:
-        print("ℹ️ Začiatok smeny sa nelíši – nič netvorím.")
+        user_to_assign = request_user
 
-
-"""IDEME TERAZ ROBIT NOCNU SMENU CREATE"""
-
-def handle_end_shift_time(attendance_instance):
-    from WorkTrackApi.models import PlannedShifts, Attendance, TypeShift
-
-    planned_shift = PlannedShifts.objects.filter(
-        hidden=False,
-        user=attendance_instance.user,
-        date=attendance_instance.date
-    ).order_by("-custom_start").first()  # Dôležité: najneskorší začiatok
-
-    if not planned_shift:
-        print("❌ Žiadna plánovaná smena")
-        return
-
-    print(f"DEBUG: Attendance end={attendance_instance.custom_end}, PlannedShift end={planned_shift.custom_end}")
-
-    # Pridali sme podmienku, že custom_end musí byť väčší (neskorší) než plánovaný koniec
-    if attendance_instance.custom_end and attendance_instance.custom_end != planned_shift.custom_end and attendance_instance.custom_end > planned_shift.custom_end:
-        try:
-            type_shift_obj = TypeShift.objects.get(id=22)
-        except TypeShift.DoesNotExist:
-            print("⚠️ Typ smeny (id=22) neexistuje!")
-            return
-
-        if PlannedShifts.objects.filter(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            custom_start=planned_shift.custom_end,
-            custom_end=attendance_instance.custom_end,
-            type_shift=type_shift_obj
-        ).exists():
-            print("⚠️ Podobná neplánovaná smena už existuje – preskakujem.")
-            return
-
-        print(f"🟢 Vytváram PlannedShift {planned_shift.custom_end} - {attendance_instance.custom_end}")
-
-        new_planned_shift = PlannedShifts.objects.create(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            custom_start=planned_shift.custom_end,
-            custom_end=attendance_instance.custom_end,
-            type_shift=type_shift_obj,
-            transferred=True,
-            is_changed=True,
-            note="⚠️ Neplánovaná zmena času – treba zadať dôvod!",
-            calendar_day=planned_shift.calendar_day,
-        )
-
-        Attendance.objects.create(
-            user=attendance_instance.user,
-            date=attendance_instance.date,
-            planned_shift=new_planned_shift,
-            custom_start=new_planned_shift.custom_start,
-            custom_end=new_planned_shift.custom_end,
-            type_shift=type_shift_obj,
-            note="✅ Automaticky vytvorené pre neskorší odchod",
-            calendar_day=new_planned_shift.calendar_day,
-        )
-
-        # ✅ Odstránili sme aktualizáciu hlavného Attendance späť na pôvodný čas
-
-        print(f"✅ Vytvorený nový Attendance pre {planned_shift.custom_end} - {attendance_instance.custom_end}")
-
-    else:
-        print("ℹ️ Koniec smeny sa nelíši alebo je skôr – nič netvorím.")
-
-       
-
+    attendance = Attendance.objects.create(
+        user=user_to_assign,
+        date=target_shift.date,
+        type_shift=target_shift.type_shift,
+        custom_start=target_shift.custom_start,
+        custom_end=target_shift.custom_end,
+        note=note or f"Preberám smenu od {target_shift.user}",
+    )
+    exchange_shift_logic(attendance, target_shift)
+    return attendance, None
 
 def exchange_shift_logic(attendance, target_shift):
-    """
-    Vykoná výmenu smeny medzi dvoma zamestnancami:
-    - vytvorí nový záznam pre zamestnanca, ktorý preberá smenu
-    - skryje pôvodnú smenu kolegu
-    - zapíše odkaz na výmenu do attendance.exchanged_with
-    """
     from WorkTrackApi.models import PlannedShifts
-    from django.core.exceptions import ValidationError
-
     if not target_shift:
         raise ValidationError("Nebola vybraná smena na výmenu.")
-
     if attendance.user == target_shift.user:
         raise ValidationError("Nemôžeš si vymeniť smenu sám so sebou.")
-
     if attendance.date != target_shift.date or attendance.type_shift != target_shift.type_shift:
         raise ValidationError("Smena na výmenu musí byť rovnakého typu a dňa.")
 
@@ -428,75 +84,236 @@ def exchange_shift_logic(attendance, target_shift):
         is_changed=True,
         note=f"Pozor Výmena smeny s {target_shift.user} – treba zadať dôvod"
     )
-
-    # Skryj pôvodnú smenu kolegu
     target_shift.hidden = True
     target_shift.save(update_fields=["hidden"])
-
-    # Priraď novú smenu do exchanged_with
     attendance.exchanged_with = new_shift
     attendance.save()
-
     print(f"🔁 Výmena smeny: {attendance.user} ↔ {target_shift.user}")
 
-
-
+# ==========================================
+# NOČNÉ SMENY
+# ==========================================
 
 def split_night_planned_shift(planned_shift):
-    """
-    Rozdelí nočnú smenu (napr. 21:00 - 09:00 ďalšieho dňa) na dve PlannedShifts:
-    - Prvá časť: pôvodný deň, od custom_start do polnoci (00:00)
-    - Druhá časť: nasledujúci deň, od 00:00 do custom_end
-
-    Predpoklad: nočná smena má typ_shift_id = 20.
-    """
-
-    # Overenie, či ide o nočnú smenu
-    if planned_shift.type_shift_id != 20:
-        return  # Nie je nočná smena, nič nerobíme
+    from WorkTrackApi.models import PlannedShifts
+    if not (planned_shift.type_shift and planned_shift.type_shift.id == 20):
+        return
 
     start = planned_shift.custom_start
     end = planned_shift.custom_end
-    date = planned_shift.date
-
-    # Kontrola, či smena prekračuje polnoc (custom_end menší ako custom_start)
-    if end > start:
-        # Smena neprekračuje polnoc, nič nedelíme
+    midnight = time(0, 0)
+    
+    if end == midnight:
         return
 
-    # 1) Prvá časť: od start do polnoci (00:00) na pôvodný dátum
-    midnight = time(0, 0)
-
     planned_shift.custom_end = midnight
-    planned_shift.save()
+    planned_shift.save(update_fields=['custom_end'])
+    print(f"✂️ Plánovaná smena {planned_shift.id} skrátená do polnoci.")
 
-    # 2) Druhá časť: od polnoci do end na ďalší deň
-    next_day = date + timedelta(days=1)
-
-    from WorkTrackApi.models import PlannedShifts
-
-    # Skontroluj, či už druhá časť neexistuje (aby sa nevytvárali duplicity)
+    next_day = planned_shift.date + timedelta(days=1)
     exists = PlannedShifts.objects.filter(
         user=planned_shift.user,
         date=next_day,
         custom_start=midnight,
-        custom_end=end,
         type_shift=planned_shift.type_shift,
-        hidden=False,
+        hidden=False
     ).exists()
 
-    if exists:
-        return  # Už existuje, nevytváraj duplikát
+    if not exists:
+        PlannedShifts.objects.create(
+            user=planned_shift.user,
+            date=next_day,
+            custom_start=midnight,
+            custom_end=end,
+            type_shift=planned_shift.type_shift,
+            calendar_day=None,
+            note=f"{planned_shift.note} (pokračovanie)",
+            transferred=planned_shift.transferred,
+            is_changed=planned_shift.is_changed,
+            hidden=False
+        )
+        print(f"➕ Vytvorená druhá časť plánu na {next_day}")
 
-    PlannedShifts.objects.create(
-        user=planned_shift.user,
-        date=next_day,
-        custom_start=midnight,
-        custom_end=end,
-        type_shift=planned_shift.type_shift,
-        transferred=planned_shift.transferred,
-        is_changed=planned_shift.is_changed,
-        note=f"{planned_shift.note} (rozdelená nočná smena)",
-        calendar_day=None,  # prípadne priradiť kalendárny deň podľa next_day
-        hidden=False,
-    )
+def handle_night_shift(attendance):
+    from WorkTrackApi.models import Attendance, PlannedShifts
+    
+    # 1. Kontrola typu smeny
+    if not (attendance.type_shift and attendance.type_shift.id == 20):
+        return
+
+    midnight = time(0, 0)
+    start = attendance.custom_start
+    end = attendance.custom_end
+
+    # 2. Zistíme, či smena prechádza cez polnoc
+    if start > end or end == midnight:
+        
+        real_end_time = end 
+        
+        # A) Orezať prvú časť
+        if end != midnight:
+            print(f"✂️ Delím dochádzku {attendance.id} (pôvodne do {end}) na polnoc.")
+            attendance.custom_end = midnight
+            attendance.save(update_fields=['custom_end'])
+        
+        # B) Druhá časť
+        next_day = attendance.date + timedelta(days=1)
+        
+        if Attendance.objects.filter(user=attendance.user, date=next_day, custom_start=midnight).exists():
+            return
+
+        next_part_plan = PlannedShifts.objects.filter(
+            user=attendance.user, date=next_day, type_shift=attendance.type_shift,
+            custom_start=midnight, hidden=False, transferred=False 
+        ).first()
+
+        new_att = None
+        if next_part_plan:
+            print(f"🔗 Automaticky preklápam druhú časť nočnej smeny (ID plánu: {next_part_plan.id})")
+            final_end = real_end_time if real_end_time != midnight else next_part_plan.custom_end
+            new_att = Attendance.objects.create(
+                user=attendance.user, date=next_day, type_shift=attendance.type_shift,
+                planned_shift=next_part_plan, custom_start=next_part_plan.custom_start,
+                custom_end=final_end, note="Pokračovanie nočnej smeny (podľa plánu)"
+            )
+        else:
+            print("⚠️ Nenájdený plán pre 2. časť, vytváram voľný Attendance.")
+            final_end = real_end_time if real_end_time != midnight else time(9, 0)
+            new_att = Attendance.objects.create(
+                user=attendance.user, date=next_day, type_shift=attendance.type_shift,
+                custom_start=midnight, custom_end=final_end, note="Pokračovanie nočnej smeny (bez plánu)"
+            )
+
+        # C) Kontrola nadčasov na druhej časti
+        if new_att:
+            handle_end_shift_time(new_att)
+
+# ==========================================
+# RIEŠENIE ČASOV (Skorší príchod / Neskorší odchod)
+# ==========================================
+
+# WorkTrackApi/utils/attendance_utils.py
+
+def handle_start_shift_time(attendance_instance):
+    from WorkTrackApi.models import PlannedShifts, Attendance, TypeShift, ChangeReason
+
+    # Nájdeme plánovanú smenu prepojenú s touto dochádzkou
+    planned_shift = attendance_instance.planned_shift
+    if not planned_shift: return 
+
+    # Časy z dochádzky (realita) a plánu
+    real_start = attendance_instance.custom_start
+    plan_start = planned_shift.custom_start
+
+    if not (real_start and plan_start): return
+
+    # --- SCENÁR A: SKORŠÍ PRÍCHOD (Nadčas) -> NOVÁ SMENA ---
+    if real_start < plan_start:
+        print(f"🟢 Skorší príchod: Vytváram Inú činnosť (Extra)")
+
+        try:
+            type_shift_extra = TypeShift.objects.get(id=22) # Iná činnosť
+        except TypeShift.DoesNotExist: return
+
+        # Zoberieme dôvod z pôvodného plánu (ak bol nastavený v serializeri) alebo default
+        reason = planned_shift.change_reason 
+
+        # Prevencia duplicít
+        if PlannedShifts.objects.filter(
+            user=attendance_instance.user, date=attendance_instance.date,
+            custom_start=real_start, custom_end=plan_start,
+            type_shift=type_shift_extra
+        ).exists(): return
+
+        # 1. Vytvoríme EXTRA PLÁN (Typ 22)
+        extra_plan = PlannedShifts.objects.create(
+            user=attendance_instance.user, date=attendance_instance.date,
+            custom_start=real_start, custom_end=plan_start,
+            type_shift=type_shift_extra, transferred=True, is_changed=True,
+            change_reason=reason, approval_status='pending',
+            note="Automaticky: Skorší príchod",
+            calendar_day=planned_shift.calendar_day,
+        )
+        
+        # 2. Vytvoríme EXTRA DOCHÁDZKU k tomu plánu
+        Attendance.objects.create(
+            user=attendance_instance.user, date=attendance_instance.date,
+            planned_shift=extra_plan, custom_start=real_start, custom_end=plan_start,
+            type_shift=type_shift_extra, note="Auto: Skorší príchod",
+            calendar_day=extra_plan.calendar_day,
+        )
+        
+        # 3. Pôvodnú dochádzku zarovnáme na plán (aby sa neprekrývala)
+        # Poznámka: Pôvodný plán nemeníme, lebo ten platí od svojho začiatku
+        attendance_instance.custom_start = plan_start
+        attendance_instance.save(update_fields=['custom_start'])
+
+    # --- SCENÁR B: NESKORÝ PRÍCHOD (Meškanie) -> ÚPRAVA PLÁNU ---
+    elif real_start > plan_start:
+        print(f"🔻 Neskorý príchod: Krátim pôvodný plán")
+        
+        # Tu len potvrdíme zmeny v pláne
+        planned_shift.custom_start = real_start
+        planned_shift.is_changed = True
+        # change_reason už bol nastavený v serializeri, tu ho len potvrdíme ak treba
+        if not planned_shift.change_reason:
+             # Fallback ak by nebol (napr. ID 9)
+             pass 
+        
+        planned_shift.note = (planned_shift.note or "") + " (Krátené pre meškanie)"
+        planned_shift.save(update_fields=['custom_start', 'is_changed', 'note'])
+
+
+def handle_end_shift_time(attendance_instance):
+    from WorkTrackApi.models import PlannedShifts, Attendance, TypeShift
+
+    planned_shift = attendance_instance.planned_shift
+    if not planned_shift: return 
+
+    real_end = attendance_instance.custom_end
+    plan_end = planned_shift.custom_end
+
+    if not (real_end and plan_end): return
+
+    # --- SCENÁR A: NESKORŠÍ ODCHOD (Nadčas) -> NOVÁ SMENA ---
+    if real_end > plan_end:
+        print(f"🟢 Neskorší odchod: Vytváram Inú činnosť (Extra)")
+        try: type_shift_extra = TypeShift.objects.get(id=22)
+        except: return
+
+        reason = planned_shift.change_reason
+
+        if PlannedShifts.objects.filter(
+            user=attendance_instance.user, date=attendance_instance.date,
+            custom_start=plan_end, custom_end=real_end, type_shift=type_shift_extra
+        ).exists(): return
+
+        extra_plan = PlannedShifts.objects.create(
+            user=attendance_instance.user, date=attendance_instance.date,
+            custom_start=plan_end, custom_end=real_end,
+            type_shift=type_shift_extra, transferred=True, is_changed=True,
+            change_reason=reason, approval_status='pending',
+            note="Automaticky: Neskorší odchod",
+            calendar_day=planned_shift.calendar_day,
+        )
+
+        Attendance.objects.create(
+            user=attendance_instance.user, date=attendance_instance.date,
+            planned_shift=extra_plan, custom_start=plan_end, custom_end=real_end,
+            type_shift=type_shift_extra, note="Auto: Neskorší odchod",
+            calendar_day=extra_plan.calendar_day,
+        )
+
+        attendance_instance.custom_end = plan_end
+        attendance_instance.save(update_fields=['custom_end'])
+
+    # --- SCENÁR B: SKORŠÍ ODCHOD (Útek) -> ÚPRAVA PLÁNU ---
+    elif real_end < plan_end:
+        print(f"🔻 Skorší odchod: Krátim pôvodný plán")
+        planned_shift.custom_end = real_end
+        planned_shift.is_changed = True
+        planned_shift.note = (planned_shift.note or "") + " (Krátené pre odchod)"
+        planned_shift.save(update_fields=['custom_end', 'is_changed', 'note'])
+def handle_any_shift_time(attendance_instance):
+    handle_start_shift_time(attendance_instance)
+    handle_end_shift_time(attendance_instance)

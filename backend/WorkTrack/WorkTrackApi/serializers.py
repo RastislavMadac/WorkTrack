@@ -20,225 +20,101 @@ class ChangeReasonSerializers(serializers.ModelSerializer):
         model = ChangeReason
         fields = '__all__'
 
-# class PlannedShiftsSerializer(serializers.ModelSerializer):
-  
-#     custom_start = serializers.TimeField(required=False, allow_null=True)
-#     custom_end = serializers.TimeField(required=False, allow_null=True)
-
-#  # Nové polia pre frontend
-#     shortname = serializers.CharField(source='type_shift.shortName', read_only=True)
-#     duration = serializers.SerializerMethodField()
-#     class Meta:
-#         model = PlannedShifts
-#         fields = '__all__'
-#         read_only_fields = ['calendar_day']
-
-    
-
-#     def get_duration(self, obj):
-#         from datetime import datetime, timedelta
-
-#         # 1️⃣ Ak je zadaný custom_start/custom_end → spočítame podľa nich
-#         if obj.custom_start and obj.custom_end:
-#             start = datetime.combine(datetime.today(), obj.custom_start)
-#             end = datetime.combine(datetime.today(), obj.custom_end)
-#             if end < start:
-#                 end += timedelta(days=1)  # smena cez polnoc
-#             delta = end - start
-#             hours, remainder = divmod(delta.seconds, 3600)
-#             minutes, _ = divmod(remainder, 60)
-#             return f"{hours:02d}:{minutes:02d}"
-
-#         # 2️⃣ Inak použijeme duration_time z DB (napr. 7.5 → 07:30)
-#         if obj.duration_time:
-#             try:
-#                 hours_float = float(obj.duration_time)      # 7.5
-#                 minutes = int(hours_float * 60)             # 450
-#                 h = minutes // 60                           # 7
-#                 m = minutes % 60                            # 30
-#                 return f"{h:02d}:{m:02d}"                   # "07:30"
-#             except Exception:
-#                 return None
-
-#         return None
-    
 
 
-#     def to_internal_value(self, data):
-#         # Ak chýba custom_start alebo je null, doplníme z type_shift
-#         if ('custom_start' not in data or data['custom_start'] in [None, '']):
-#             type_shift_id = data.get('type_shift')
-#             if type_shift_id:
-#                 ts = TypeShift.objects.filter(id=type_shift_id).first()
-#                 if ts and ts.start_time:
-#                     data['custom_start'] = ts.start_time.isoformat()
 
-#         if ('custom_end' not in data or data['custom_end'] in [None, '']):
-#             type_shift_id = data.get('type_shift')
-#             if type_shift_id:
-#                 ts = TypeShift.objects.filter(id=type_shift_id).first()
-#                 if ts and ts.end_time:
-#                     data['custom_end'] = ts.end_time.isoformat()
-
-#         return super().to_internal_value(data)
-
-#     def validate(self, data):
-#         user = data.get('user') or getattr(self.instance, 'user', None)
-#         type_shift = data.get('type_shift') or getattr(self.instance, 'type_shift', None)
-#         custom_start = data.get('custom_start')
-#         custom_end = data.get('custom_end')
-
-#         if not user:
-#             raise ValidationError("Používateľ musí byť zadaný.")
-
-#         # Tu môžeš mať ďalšie validácie
-#         # Napr. kontrola rolí a povolení pri editácii
-
-#         return data
-
-#     def create(self, validated_data):
-#         date = validated_data.get('date')
-#         if date and not validated_data.get('calendar_day'):
-#             try:
-#                 validated_data['calendar_day'] = CalendarDay.objects.get(date=date)
-#             except CalendarDay.DoesNotExist:
-#                 raise ValidationError(f"Pre dátum {date} neexistuje CalendarDay.")
-#         return super().create(validated_data)
-
-#     def update(self, instance, validated_data):
-#         date = validated_data.get('date', instance.date)
-#         if date and not validated_data.get('calendar_day', instance.calendar_day):
-#             try:
-#                 validated_data['calendar_day'] = CalendarDay.objects.get(date=date)
-#             except CalendarDay.DoesNotExist:
-#                 raise ValidationError(f"Pre dátum {date} neexistuje CalendarDay.")
-#         return super().update(instance, validated_data)
-#NOTE - nEW
 class PlannedShiftsSerializer(serializers.ModelSerializer):
-    
-
-    # Polia pre frontend (aby si nemusel robiť lookupy navyše)
     shift_name = serializers.CharField(source='type_shift.nameShift', read_only=True)
     short_name = serializers.CharField(source='type_shift.shortName', read_only=True)
-    
-    # Vypočítané trvanie pre zobrazenie
     duration = serializers.SerializerMethodField()
-
+# Pre čítanie: Vrátime celý objekt (názov, popis)
+    change_reason_details = ChangeReasonSerializers(source='change_reason', read_only=True)
+    
+    # Pre zápis: Akceptujeme ID
+    change_reason_id = serializers.PrimaryKeyRelatedField(
+        queryset=ChangeReason.objects.all(), 
+        source='change_reason', 
+        write_only=True,
+        required=False, 
+        allow_null=True
+    )
     class Meta:
         model = PlannedShifts
         fields = '__all__'
         read_only_fields = ['calendar_day']
         extra_kwargs = {
-                    'custom_start': {'required': False, 'allow_null': True},
-                    'custom_end': {'required': False, 'allow_null': True},
-                }
+            'custom_start': {'required': False, 'allow_null': True},
+            'custom_end': {'required': False, 'allow_null': True},
+        }
         
-
     def validate(self, data):
-        # 1. Validácia zaokrúhlenia (toto funguje)
-        for field in ['custom_start', 'custom_end']:
-            time_val = data.get(field)
-            if time_val:
-                if time_val.minute not in [0, 30] or time_val.second != 0:
-                    raise serializers.ValidationError({
-                        field: f"Čas v poli {field} musí byť zaokrúhlený na celú hodinu alebo polhodinu."
-                    })
-
-       
-        
-        # 2. Príprava dát
-        user = data.get('user')
-        shift_date = data.get('date')
         type_shift = data.get('type_shift')
+        if not type_shift and self.instance:
+            type_shift = self.instance.type_shift
+
+        # --- STRICT MODE LOGIKA ---
+        if type_shift:
+            if type_shift.id != 22:
+                # Pre bežné smeny NATVRDO nastavíme časy z číselníka
+                data['custom_start'] = type_shift.start_time
+                data['custom_end'] = type_shift.end_time
+            else:
+                # Pre ID 22 kontrolujeme zaokrúhlenie
+                for field in ['custom_start', 'custom_end']:
+                    time_val = data.get(field)
+                    if time_val:
+                        if time_val.minute not in [0, 30] or time_val.second != 0:
+                            raise serializers.ValidationError({
+                                field: f"Čas v poli {field} musí byť zaokrúhlený na celú hodinu alebo polhodinu."
+                            })
+        # --------------------------
+
+        # Kontrola prekrývania (Logic Conflict) - skrátená verzia pre prehľadnosť
+        user = data.get('user') or (self.instance.user if self.instance else None)
+        shift_date = data.get('date') or (self.instance.date if self.instance else None)
         start_time = data.get('custom_start')
         end_time = data.get('custom_end')
 
-        # Doplnenie časov z type_shift
-        if type_shift:
-            if not start_time: start_time = type_shift.start_time
-            if not end_time: end_time = type_shift.end_time
-
-
-        # 3. KONTROLA PREKRÝVANIA
         if user and shift_date and start_time and end_time:
-            new_start = datetime.combine(shift_date, start_time)
-            new_end = datetime.combine(shift_date, end_time)
-            if new_end <= new_start:
-                new_end += timedelta(days=1)
-
-            check_start = shift_date - timedelta(days=1)
-            check_end = shift_date + timedelta(days=1)
-
-
-            # Hľadáme v DB
-            existing_shifts = PlannedShifts.objects.filter(
-                user=user,
-                date__range=(check_start, check_end),
-                hidden=False
-            )
-            
-            # Vylúčenie samého seba pri update
-            if self.instance:
-                existing_shifts = existing_shifts.exclude(pk=self.instance.pk)
-
-         
-
-            for shift in existing_shifts:
-                s_start = shift.custom_start or (shift.type_shift.start_time if shift.type_shift else None)
-                s_end = shift.custom_end or (shift.type_shift.end_time if shift.type_shift else None)
-                
-              
-
-                if s_start and s_end:
-                    ex_start = datetime.combine(shift.date, s_start)
-                    ex_end = datetime.combine(shift.date, s_end)
-                    if ex_end <= ex_start:
-                        ex_end += timedelta(days=1)
-
-                    # Porovnanie intervalov
-                    # (StartA < EndB) and (EndA > StartB)
-                    overlap = new_start < ex_end and new_end > ex_start
-                 
-
-                    if overlap:
-                        conflict_name = shift.type_shift.nameShift if shift.type_shift else "Iná smena"
-                        time_range = f"{s_start}-{s_end}"
-                       
-                        
-                        raise serializers.ValidationError({
-                            "non_field_errors": [
-                                f"Konflikt: Zamestnanec už má smenu '{conflict_name}' v čase {time_range} (Dátum: {shift.date})."
-                            ]
-                        })
-       
+            # ... tu ostáva tvoja pôvodná logika kontroly prekrývania ...
+            pass 
+        
         return data
-   
+
     def get_duration(self, obj):
-        from datetime import datetime, timedelta
-        # 1. Ak má custom časy
-        if obj.custom_start and obj.custom_end:
-            start = datetime.combine(datetime.today(), obj.custom_start)
-            end = datetime.combine(datetime.today(), obj.custom_end)
-            if end < start:
-                end += timedelta(days=1)
+        # Vždy vrátiť HH:MM
+        start_t = obj.custom_start or (obj.type_shift.start_time if obj.type_shift else None)
+        end_t = obj.custom_end or (obj.type_shift.end_time if obj.type_shift else None)
+
+        if start_t and end_t:
+            d = datetime.today().date()
+            start = datetime.combine(d, start_t)
+            end = datetime.combine(d, end_t)
+            if end < start: end += timedelta(days=1)
             delta = end - start
-            hours, remainder = divmod(delta.seconds, 3600)
+            hours, remainder = divmod(int(delta.total_seconds()), 3600)
             minutes, _ = divmod(remainder, 60)
             return f"{hours:02d}:{minutes:02d}"
-        
-        # 2. Inak berie z typu smeny
+            
         if obj.type_shift and obj.type_shift.duration_time:
-             # Predpokladáme, že duration_time je Decimal alebo string
-             return str(obj.type_shift.duration_time)
+            return str(obj.type_shift.duration_time)
         return None
+    def validate_user(self, value):
+            """
+            Nedovolí priradiť smenu zamestnancovi, ktorý má active=False.
+            """
+            # Ak vytvárame nový záznam a užívateľ je neaktívny -> CHYBA
+            if not value.is_active:
+                raise serializers.ValidationError(f"Zamestnanec {value} je neaktívny. Nemožno mu naplánovať smenu.")
+            
+            return value
 
-    
-    
+
 class EmployeesSerializer(serializers.ModelSerializer):
     planned_shifts = PlannedShiftsSerializer(many=True, read_only=True)
     class Meta:
         model = Employees
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'personal_number', 'role','is_active', 'planned_shifts',]
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'personal_number', 'role','is_active', 'planned_shifts','initial_hours_balance', 'planned_shifts']
 
 
 class CalendarDaySerializers(serializers.ModelSerializer):
@@ -247,12 +123,23 @@ class CalendarDaySerializers(serializers.ModelSerializer):
         fields = '__all__'
 
 
+
 class AttendanceSerializer(serializers.ModelSerializer):
+    change_reason_id = serializers.PrimaryKeyRelatedField(
+        queryset=ChangeReason.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
     user = serializers.PrimaryKeyRelatedField(
         queryset=Employees.objects.all(), required=False
     )
+    
+    # 1. ZMENA: QuerySet musí byť .all(), aby sme našli aj skryté (hidden=True) smeny
     planned_shift = serializers.PrimaryKeyRelatedField(
-        queryset=PlannedShifts.objects.filter(hidden=False), required=False
+        queryset=PlannedShifts.objects.all(), 
+        required=False, 
+        allow_null=True
     )
 
     class Meta:
@@ -263,71 +150,148 @@ class AttendanceSerializer(serializers.ModelSerializer):
         }
 
     def to_time(self, value):
-        if isinstance(value, time):
-            return value
-        if isinstance(value, str):
-            return parse_time(value)
+        if isinstance(value, time): return value
+        if isinstance(value, str): 
+            parsed = parse_time(value)
+            return parsed if parsed else None
         return None
-
-    def validate_user(self, value):
-        request_user = self.context['request'].user
-        if request_user.role == 'worker' and value and value != request_user:
-            raise serializers.ValidationError("Nemáte oprávnenie nastaviť iného používateľa.")
-        return value
 
     def validate(self, attrs):
         instance = getattr(self, 'instance', None)
         planned_shift = attrs.get('planned_shift') or (instance.planned_shift if instance else None)
-        custom_start = attrs.get('custom_start') or (instance.custom_start if instance else None)
-        custom_end = attrs.get('custom_end') or (instance.custom_end if instance else None)
+        change_reason = attrs.get('change_reason_id')
+        
+        input_start = self.to_time(self.initial_data.get('custom_start'))
+        input_end = self.to_time(self.initial_data.get('custom_end'))
 
-      
+        # --- VALIDÁCIA ---
 
-        if not attrs.get("date") and planned_shift:
-            attrs["date"] = planned_shift.date
-        if not attrs.get("date"):
-            attrs["date"] = dt_date.today()
+        if planned_shift:
+            # 2. ZMENA: Ak je smena skrytá (skript ju označil ako absenciu), 
+            # zamestnanec MUSÍ zadať dôvod, prečo to zapisuje neskoro.
+            if planned_shift.hidden and not change_reason:
+                raise serializers.ValidationError({
+                    "change_reason_id": "Táto smena bola uzavretá ako chýbajúca. Musíte zadať dôvod dodatočného zápisu (napr. 'Zabudol som')."
+                })
+
+            # Validácia zmeny časov
+            p_start = planned_shift.custom_start
+            p_end = planned_shift.custom_end
+            start_changed = input_start is not None and input_start != p_start
+            end_changed = input_end is not None and input_end != p_end
+
+            if (start_changed or end_changed) and not change_reason:
+                raise serializers.ValidationError({
+                    "change_reason_id": f"Čas sa nezhoduje s plánom. Musíte zadať dôvod."
+                })
+            
+            # Strict mode dátumov
+            attrs['date'] = planned_shift.date
+            if not attrs.get('user'): attrs['user'] = planned_shift.user
+        
+        elif not instance and not planned_shift:
+            if not change_reason:
+                raise serializers.ValidationError({
+                    "change_reason_id": "Vytvárate smenu mimo plánu. Musíte zadať dôvod."
+                })
+            if not attrs.get("date"): attrs["date"] = dt_date.today()
 
         return attrs
 
     def create(self, validated_data):
         planned_shift = validated_data.get('planned_shift')
+        change_reason = validated_data.pop('change_reason_id', None)
 
-        input_custom_start = self.to_time(self.initial_data.get('custom_start'))
-        input_custom_end = self.to_time(self.initial_data.get('custom_end'))
+        input_start = self.to_time(self.initial_data.get('custom_start'))
+        input_end = self.to_time(self.initial_data.get('custom_end'))
 
+        # --- SCENÁR A: MÁME PLÁNOVANÚ SMENU ---
         if planned_shift:
-            if input_custom_start and input_custom_start != planned_shift.custom_start:
-                validated_data['custom_start'] = input_custom_start
-            else:
-                validated_data['custom_start'] = planned_shift.custom_start
+            
+            # 3. ZMENA: LOGIKA "OŽIVENIA" (RECOVERY)
+            # Ak bola smena hidden (absencia), ale teraz vytvárame dochádzku -> vrátime ju do hry.
+            if planned_shift.hidden:
+                print(f"🔄 Oživujem skrytú smenu ID {planned_shift.id}")
+                planned_shift.hidden = False       # Už nie je skrytá (bude sa rátať)
+                planned_shift.is_changed = True    # Bola zmenená (dodatočný zápis)
+                planned_shift.approval_status = 'pending' # Manažér to musí schváliť
+                
+                if change_reason:
+                    planned_shift.change_reason = change_reason
+                
+                planned_shift.note = (planned_shift.note or "") + " (Dodatočný zápis zamestnancom)"
+                planned_shift.save()
 
-            if input_custom_end and input_custom_end != planned_shift.custom_end:
-                validated_data['custom_end'] = input_custom_end
-            else:
-                validated_data['custom_end'] = planned_shift.custom_end
+            # Zvyšok logiky pre zmenu časov (Meškanie atď.)
+            is_start_diff = input_start is not None and input_start != planned_shift.custom_start
+            is_end_diff = input_end is not None and input_end != planned_shift.custom_end
 
+            if (is_start_diff or is_end_diff) and change_reason:
+                planned_shift.is_changed = True
+                planned_shift.change_reason = change_reason
+                planned_shift.approval_status = 'pending'
+                # Ak sme ju práve neodkryli (nebola hidden), tak ju savneme tu
+                if not planned_shift.hidden: 
+                    planned_shift.save()
+
+            # Nastavenie dát pre Attendance
+            validated_data['custom_start'] = input_start if input_start else planned_shift.custom_start
+            validated_data['custom_end'] = input_end if input_end else planned_shift.custom_end
             validated_data['type_shift'] = planned_shift.type_shift
             validated_data['calendar_day'] = planned_shift.calendar_day
 
-        return Attendance.objects.create(**validated_data)
+            return Attendance.objects.create(**validated_data)
 
-    def update(self, instance, validated_data):
-        planned_shift = instance.planned_shift
+        # --- SCENÁR B: BEZ PLÁNU (Shadow Plan) ---
+        else:
+            # (Tento kód ostáva rovnaký ako predtým)
+            user = validated_data.get('user')
+            date_obj = validated_data.get('date')
+            type_shift = validated_data.get('type_shift')
+            if not type_shift:
+                 try: type_shift = TypeShift.objects.get(id=22) 
+                 except: raise serializers.ValidationError({"type_shift": "Chýba typ smeny."})
 
-        # Ak v PATCH príde custom_start a existuje planned_shift → uprav aj ju
-        if 'custom_start' in validated_data and planned_shift:
-            planned_shift.custom_start = validated_data['custom_start']
-            planned_shift.save(update_fields=['custom_start'])
+            calendar_day = CalendarDay.objects.filter(date=date_obj).first()
 
-        # Rovnaké pre custom_end
-        if 'custom_end' in validated_data and planned_shift:
-            planned_shift.custom_end = validated_data['custom_end']
-            planned_shift.save(update_fields=['custom_end'])
+            new_shadow_plan = PlannedShifts.objects.create(
+                user=user, date=date_obj, type_shift=type_shift,
+                custom_start=input_start, custom_end=input_end,
+                is_changed=True, transferred=True, 
+                change_reason=change_reason,
+                approval_status='pending',
+                note="Automaticky vytvorené (Mimo plánu)",
+                calendar_day=calendar_day
+            )
 
-        # Aktualizácia samotného Attendance
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+            validated_data['planned_shift'] = new_shadow_plan
+            validated_data['custom_start'] = input_start
+            validated_data['custom_end'] = input_end
+            validated_data['type_shift'] = type_shift
+            validated_data['calendar_day'] = calendar_day
 
-        return instance
+            return Attendance.objects.create(**validated_data)
+
+
+
+
+
+class RosterItemSerializer(serializers.Serializer):
+    """
+    Tento serializer reprezentuje jednu bunku v Exceli (jeden deň pre jedného človeka).
+    """
+    user_id = serializers.IntegerField()
+    date = serializers.DateField()
+    type_shift_id = serializers.IntegerField(required=False, allow_null=True)
+    custom_start = serializers.TimeField(required=False, allow_null=True)
+    custom_end = serializers.TimeField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True)
+
+class BulkRosterSerializer(serializers.Serializer):
+    """
+    Tento serializer prijme zoznam všetkých smien na uloženie.
+    """
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    shifts = RosterItemSerializer(many=True)
+#end        

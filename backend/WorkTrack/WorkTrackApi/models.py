@@ -36,7 +36,12 @@ class Employees(AbstractUser):
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email', 'first_name', 'last_name', 'personal_number']
-
+    initial_hours_balance = models.DecimalField(
+            max_digits=6, 
+            decimal_places=2, 
+            default=0.00,
+            help_text="Počiatočný stav prenesených hodín (napr. +10.5 alebo -5.0) pri nástupe alebo štarte systému."
+        )
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.personal_number})"
 
@@ -190,25 +195,7 @@ class ChangeReason(models.Model):
 """planned shifts"""
 
 
-# class PlannedShifts(models.Model):
-#     user = models.ForeignKey(Employees, on_delete=models.CASCADE,related_name='planned_shifts')
-#     date = models.DateField(null=True, blank=True)
-#     type_shift = models.ForeignKey(TypeShift, null=True, blank=True, on_delete=models.SET_NULL)
-#     custom_start = models.TimeField(null=True, blank=True)
-#     custom_end = models.TimeField(null=True, blank=True)
-#     note = models.TextField(blank=True)
-#     transferred = models.BooleanField(default=False)
-#     is_changed = models.BooleanField(default=False)
-#     hidden = models.BooleanField(default=False)
-#     change_reason = models.ForeignKey('WorkTrackApi.ChangeReason',on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
-#     calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="calendar_day",null=True, blank=True)
-   
-#     class Meta:
-#       unique_together = ('user', 'date', 'custom_start', 'custom_end')
 
-#     def __str__(self):
-#         return f"{self.user} {self.type_shift}"
-#NOTE - nEW
 class PlannedShifts(models.Model):
     user = models.ForeignKey('WorkTrackApi.Employees', on_delete=models.CASCADE, related_name='planned_shifts')
     date = models.DateField(null=True, blank=True)
@@ -224,7 +211,30 @@ class PlannedShifts(models.Model):
     transferred = models.BooleanField(default=False) # Či už bola preklopená do dochádzky
     is_changed = models.BooleanField(default=False)
     hidden = models.BooleanField(default=False) # Soft delete
+    is_changed = models.BooleanField(default=False)
     
+    # Prepojenie na tvoj číselník dôvodov
+    change_reason = models.ForeignKey(
+        'ChangeReason', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='shifts'
+    )
+    
+    # Stav schválenia manažérom
+    APPROVAL_CHOICES = [
+        ('pending', 'Čaká na schválenie'),
+        ('approved', 'Schválené'),
+        ('rejected', 'Zamietnuté'),
+    ]
+    approval_status = models.CharField(
+        max_length=10, 
+        choices=APPROVAL_CHOICES, 
+        default='pending'
+    )
+    
+    manager_note = models.TextField(blank=True, null=True)
     change_reason = models.ForeignKey('WorkTrackApi.ChangeReason', on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
     calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="planned_calendar_day", null=True, blank=True)
    

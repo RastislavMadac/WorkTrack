@@ -10,7 +10,7 @@ class EmployeesAdmin(UserAdmin):
     readonly_fields = ("id",)
     fieldsets = (
         (None, {"fields": ("id","username", "password")}),
-        (_("Osobné údaje"), {"fields": ("first_name", "last_name", "email", "personal_number", "role")}),
+        (_("Osobné údaje"), {"fields": ("first_name", "last_name",'initial_hours_balance', "email", "personal_number", "role")}),
         (_("Oprávnenia"), {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         (_("Dôležité dátumy"), {"fields": ("last_login", "date_joined")}),
     )
@@ -64,7 +64,7 @@ class AttendanceAdmin(admin.ModelAdmin):
 @admin.register(PlannedShifts)
 class PlannedShiftsAdmin(admin.ModelAdmin):
     
-    list_display = ('id','user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'transferred', 'is_changed','hidden', 'change_reason')
+    list_display = ('id','user', 'date', 'type_shift', 'custom_start', 'custom_end','note', 'transferred', 'is_changed','hidden', 'change_reason','change_reason', 'approval_status',)
     list_filter = ('user', 'type_shift')
     list_display_links = ('id', 'user')
 
