@@ -237,7 +237,14 @@ class PlannedShifts(models.Model):
     manager_note = models.TextField(blank=True, null=True)
     change_reason = models.ForeignKey('WorkTrackApi.ChangeReason', on_delete=models.CASCADE, related_name="change_reason", blank=True, null=True)
     calendar_day = models.ForeignKey('WorkTrackApi.CalendarDay', on_delete=models.CASCADE, related_name="planned_calendar_day", null=True, blank=True)
-   
+    exchange_link = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='exchange_linked_shifts',
+        help_text="Odkaz na pôvodnú smenu pri výmene"
+    )
     class Meta:
         # Povolíme viac záznamov na deň? Ak nie, nechaj toto. 
         # Ak chceš, aby mal rannú a potom nočnú v ten istý deň, toto treba zmazať.

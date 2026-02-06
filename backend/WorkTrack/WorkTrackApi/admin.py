@@ -71,7 +71,7 @@ class PlannedShiftsAdmin(admin.ModelAdmin):
 @admin.register(TypeShift)
 class TypeShiftsAdmin(admin.ModelAdmin):
     
-    list_display = ('id', 'nameShift', 'start_time', 'end_time', 'duration_time','shortName')
+    list_display = ('id', 'nameShift', 'start_time', 'end_time', 'duration_time','allow_variable_time','shortName')
     list_filter = ('id','nameShift')
 
 @admin.register(CalendarDay)
@@ -82,5 +82,5 @@ class CalendarDayAdmin(admin.ModelAdmin):
 
 @admin.register(ChangeReason)
 class ChangeReasonAdmin(admin.ModelAdmin):
-    list_display = ("name", "description", "category")
+    list_display = ("id","name", "description", "category")
    

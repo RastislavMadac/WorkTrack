@@ -1,31 +1,494 @@
-from rest_framework.exceptions import ValidationError
-from .export import MonthlyRosterExporter, AttendancePdfExporter,VacationFormExporter
+# Súbor: WorkTrackApi/views.py
+
 from rest_framework import viewsets, permissions, status, generics
-from .models import Employees, TypeShift, Attendance, PlannedShifts, ChangeReason, CalendarDay
-from .serializers import BulkRosterSerializer, EmployeesSerializer, TypeShiftSerializer, AttendanceSerializer, PlannedShiftsSerializer, ChangeReasonSerializers, CalendarDaySerializers
-from .services import calculate_working_fund, calculate_worked_hours, calculate_saturday_sunday_hours, calculate_weekend_hours, calculate_holiday_hours, compare_worked_time_working_fund, calculate_total_hours_with_transfer, calculate_night_shift_hours, copy_monthly_plan, get_planned_monthly_summary
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
-from datetime import time, timedelta
-from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.utils.dateparse import parse_time
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
-from .permissions import IsManagerOrReadOnly
 
-# Import utility funkcii
+from django.db import transaction
+from django.utils.dateparse import parse_time
+from datetime import date, datetime, time, timedelta
+from calendar import monthrange
+
+# Importy modelov a serializerov
+from .models import Employees, TypeShift, Attendance, PlannedShifts, ChangeReason, CalendarDay
+from .serializers import (
+    BulkRosterSerializer, EmployeesSerializer, TypeShiftSerializer, 
+    AttendanceSerializer, PlannedShiftsSerializer, ChangeReasonSerializers, 
+    CalendarDaySerializers
+)
+from .export import MonthlyRosterExporter, AttendancePdfExporter, VacationFormExporter
+from .permissions import IsManagerOrReadOnly, IsManagerOrWorkerExchangeOnly
+
+# DÔLEŽITÉ: Import všetkých servisných funkcií
+from .services import (
+    calculate_working_fund, calculate_worked_hours, calculate_saturday_sunday_hours,
+    calculate_weekend_hours, calculate_holiday_hours, compare_worked_time_working_fund,
+    calculate_total_hours_with_transfer, calculate_night_shift_hours, copy_monthly_plan,
+    get_planned_monthly_summary, get_balances_up_to, get_full_monthly_stats, get_yearly_report_data
+)
+
 from WorkTrackApi.utils.attendance_utils import (
-    split_night_planned_shift,
-    handle_night_shift,
-    handle_start_shift_time,
-    handle_end_shift_time
+    split_night_planned_shift, handle_night_shift, 
+    handle_start_shift_time, handle_end_shift_time
 )
 
 # ==========================================
-# API VIEWS (Reports & Stats)
+# 1. ŠPECIÁLNE ENDPOINTY (Stats, Dashboard, Auth)
+# ==========================================
+
+class MonthlyStatsView(APIView):
+    """
+    Endpoint: /api/plannedshift/stats/?year=2025&month=1
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            year = int(request.query_params.get('year'))
+            month = int(request.query_params.get('month'))
+            data = get_full_monthly_stats(year, month)
+            return Response(data)
+        except (ValueError, TypeError):
+            return Response({"error": "Invalid year or month"}, status=400)
+
+class MonthlyBalancesAPIView(APIView):
+    def get(self, request, year, month):
+        balances = get_balances_up_to(year, month)
+        return Response(balances)
+
+class WorkingFundAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, year: int, month: int):
+        fund = calculate_working_fund(year, month)
+        holidays_query = CalendarDay.objects.filter(
+            date__year=year, date__month=month, is_holiday=True
+        )
+        holiday_days = [h.date.day for h in holidays_query]
+        return Response({
+            "year": year, "month": month,
+            "working_fund_hours": fund,
+            "holidays": holiday_days
+        })
+
+class DashboardView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request):
+        return Response({"message": f"Ahoj {request.user.username}, toto je tvoj dashboard"})
+
+class TestView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request):
+        return Response({"message": "OK"})
+
+class ActiveUserListView(generics.ListAPIView):
+    serializer_class = EmployeesSerializer
+    def get_queryset(self):
+         return Employees.objects.all().prefetch_related('planned_shifts')
+
+class CurrentUserView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request):
+        serializer = EmployeesSerializer(request.user)
+        return Response(serializer.data)
+
+class CustomAuthToken(ObtainAuthToken):
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key, 'user_id': user.id,
+            'username': user.username, 'role': user.role
+        })
+
+# ==========================================
+# 2. VIEWSETS (CRUD Operácie)
+# ==========================================
+
+class PlannerShiftsViewSet(viewsets.ModelViewSet):
+    queryset = PlannedShifts.objects.all()
+    serializer_class = PlannedShiftsSerializer
+    permission_classes = [IsManagerOrWorkerExchangeOnly]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_anonymous: return PlannedShifts.objects.none()
+        
+        queryset = PlannedShifts.objects.filter(hidden=False)
+        if user.role == 'worker':
+            queryset = queryset.filter(user=user)
+        
+        month = self.request.query_params.get('month')
+        year = self.request.query_params.get('year')
+        user_id_param = self.request.query_params.get('user')
+        
+        if month and year:
+            queryset = queryset.filter(date__year=year, date__month=month)
+        if user_id_param:
+            queryset = queryset.filter(user_id=user_id_param)
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        is_many = isinstance(request.data, list)
+        serializer = self.get_serializer(data=request.data, many=is_many)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        created_data = serializer.save()
+        if isinstance(created_data, list):
+            for shift in created_data:
+                if shift.type_shift and shift.type_shift.id == 20:
+                    split_night_planned_shift(shift)
+        else:
+            if created_data.type_shift and created_data.type_shift.id == 20:
+                split_night_planned_shift(created_data)
+
+    def perform_update(self, serializer):
+        planned_shift = serializer.save()
+        if planned_shift.type_shift and planned_shift.type_shift.id == 20:
+            split_night_planned_shift(planned_shift)
+
+    # def destroy(self, request, *args, **kwargs):
+    #     instance = self.get_object()
+    #     instance.hidden = True
+    #     instance.save()
+    #     return Response({"detail": "Smena bola skrytá."}, status=status.HTTP_200_OK)
+    def perform_destroy(self, instance):
+            """
+            Vymaže záznam z databázy úplne.
+            """
+            instance.delete()
+    @action(detail=False, methods=['post'], url_path='save-roster-matrix')
+    def save_roster_matrix(self, request):
+        serializer = BulkRosterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        year, month, shifts_data = data['year'], data['month'], data['shifts']
+        
+        saved_count = 0
+        try:
+            with transaction.atomic():
+                for item in shifts_data:
+                    shift_date = item['date']
+                    if shift_date.year != year or shift_date.month != month: continue
+
+                    if item.get('type_shift_id') is None:
+                        PlannedShifts.objects.filter(user_id=item['user_id'], date=shift_date).delete()
+                        continue
+
+                    defaults = {
+                        'type_shift_id': item['type_shift_id'],
+                        'custom_start': item.get('custom_start'),
+                        'custom_end': item.get('custom_end'),
+                        'note': item.get('note', ''),
+                        'hidden': False
+                    }
+                    if not defaults['custom_start']:
+                        ts = TypeShift.objects.get(id=item['type_shift_id'])
+                        defaults['custom_start'] = ts.start_time
+                        defaults['custom_end'] = ts.end_time
+
+                    shift, _ = PlannedShifts.objects.update_or_create(
+                        user_id=item['user_id'], date=shift_date, defaults=defaults
+                    )
+                    if shift.type_shift and shift.type_shift.id == 20:
+                        split_night_planned_shift(shift)
+                    saved_count += 1
+            return Response({"detail": f"Uložených {saved_count} záznamov."}, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+    @action(detail=False, methods=['get'], url_path='export-complex-roster')
+    def export_complex_roster(self, request):
+        try:
+            year = int(request.query_params.get('year', 2025))
+            month = int(request.query_params.get('month', 4))
+        except ValueError:
+            return Response({"error": "Chyba parametrov"}, status=400)
+        exporter = MonthlyRosterExporter(year, month)
+        return exporter.generate_response()
+
+    @action(detail=False, methods=['get'], url_path='export-vacation-forms')
+    def export_vacation_forms(self, request):
+        try:
+            year = int(request.query_params.get('year'))
+            month = int(request.query_params.get('month'))
+            user_id = int(request.query_params.get('user_id'))
+        except (TypeError, ValueError):
+             return Response({"error": "Chýbajú parametre"}, status=400)
+        exporter = VacationFormExporter(user_id, year, month)
+        return exporter.generate_response()
+    
+    @action(detail=False, methods=['post'])
+    def copy_plan(self, request):
+        s_year = request.data.get('source_year')
+        s_month = request.data.get('source_month')
+        t_year = request.data.get('target_year')
+        t_month = request.data.get('target_month')
+        user_id = request.data.get('user_id')
+
+        if not all([s_year, s_month, t_year, t_month]):
+            return Response({"error": "Chýbajú povinné údaje."}, status=400)
+
+        try:
+            result = copy_monthly_plan(int(s_year), int(s_month), int(t_year), int(t_month), user_id)
+            return Response({"detail": "Plán skopírovaný.", "stats": result}, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+    @action(detail=False, methods=['get'], url_path='summary/(?P<user_id>\d+)/(?P<year>\d+)/(?P<month>\d+)')
+    def monthly_summary(self, request, user_id=None, year=None, month=None):
+        if not user_id or not year or not month:
+            return Response({"error": "Chýbajú parametre"}, status=400)
+        try:
+            summary_data = get_planned_monthly_summary(int(user_id), int(year), int(month))
+            return Response(summary_data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+    @action(detail=True, methods=['post'], url_path='request-exchange')
+    def request_exchange(self, request, pk=None):
+        source_shift = self.get_object()
+        user = request.user # Prihlásený používateľ
+
+        # --- BEZPEČNOSTNÁ KONTROLA ---
+        # Ak je používateľ 'worker' A smena nie je jeho -> ERROR 403
+        if user.role == 'worker' and source_shift.user.id != user.id:
+            return Response(
+                {"error": "Nemáte oprávnenie žiadať o výmenu cudzej smeny."}, 
+                status=403 # Forbidden
+            )
+        target_user_id = request.data.get('target_user_id')
+        
+        # ID 40 (alebo iné existujúce ID pre "Výmena")
+        EXCHANGE_REASON_ID = 40 
+
+        if not target_user_id:
+            return Response({"error": "Musíte vybrať kolegu na výmenu."}, status=400)
+
+        try:
+            target_user = Employees.objects.get(id=target_user_id)
+        except Employees.DoesNotExist:
+            return Response({"error": "Cieľový používateľ neexistuje."}, status=404)
+
+        if source_shift.user.id == target_user.id:
+             return Response({"error": "Nemôžete vymeniť smenu sám so sebou."}, status=400)
+
+        # --- NOVÁ KONTROLA: Má už kolega túto smenu? ---
+        duplicate_exists = PlannedShifts.objects.filter(
+            user=target_user,
+            date=source_shift.date,
+            custom_start=source_shift.custom_start,
+            custom_end=source_shift.custom_end
+        ).exists()
+
+        if duplicate_exists:
+            return Response({
+                "error": f"Kolega {target_user.last_name} už má presne túto smenu v pláne."
+            }, status=400)
+        # -----------------------------------------------
+
+        try:
+            with transaction.atomic():
+                # 1. Skryjeme pôvodnú smenu
+                source_shift.hidden = True
+                source_shift.approval_status = 'pending'
+                source_shift.note = f"{source_shift.note or ''} (Čaká na výmenu s {target_user.last_name})"
+                source_shift.save()
+
+                # 2. Vytvoríme novú smenu
+                new_shift = PlannedShifts.objects.create(
+                    user=target_user,
+                    date=source_shift.date,
+                    type_shift=source_shift.type_shift,
+                    custom_start=source_shift.custom_start,
+                    custom_end=source_shift.custom_end,
+                    change_reason_id=EXCHANGE_REASON_ID,
+                    is_changed=True,
+                    approval_status='pending',
+                    transferred=False,
+                    exchange_link=source_shift,
+                    note=f"Návrh výmeny od {source_shift.user.last_name}"
+                )
+
+            return Response({"detail": "Žiadosť o výmenu bola odoslaná.", "new_shift_id": new_shift.id}, status=200)
+        
+        except Exception as e:
+            # Ak nastane iná chyba (napr. neexistujúce reason_id), vypíšeme ju
+            import traceback
+            print(traceback.format_exc())
+            return Response({"error": str(e)}, status=500)
+    @action(detail=True, methods=['post'], url_path='decide-exchange')
+    def decide_exchange(self, request, pk=None):
+        target_shift = self.get_object()
+        new_status = request.data.get('status') 
+        note = request.data.get('manager_note', '')
+
+        if new_status not in ['approved', 'rejected']:
+             return Response({"error": "Neplatný status."}, status=400)
+
+        source_shift = target_shift.exchange_link
+        
+        if not source_shift:
+             return Response({"error": "Chýba prepojenie na pôvodnú smenu."}, status=400)
+
+        with transaction.atomic():
+            target_shift.approval_status = new_status
+            target_shift.manager_note = note
+            
+            if new_status == 'approved':
+                # --- SCHVÁLENÉ ---
+                target_shift.approval_status = 'approved'
+                
+                # NOVÁ ÚPRAVA: Smena sa stáva oficiálnou, rušíme príznak "zmena"
+                target_shift.is_changed = False 
+                
+                target_shift.note = f"{target_shift.note or ''} (Schválená výmena od {source_shift.user.last_name})"
+                target_shift.save()
+
+                # Starú smenu vymažeme, lebo zodpovednosť bola prenesená
+                source_shift.delete()
+                
+                msg = "Výmena schválená, smena je platná a pôvodná bola zmazaná."
+
+            elif new_status == 'rejected':
+                # --- ZAMIETNUTÉ ---
+                # Novú smenu zmažeme
+                target_shift.delete() 
+
+                # Starú smenu vrátime pôvodnému majiteľovi
+                source_shift.hidden = False
+                source_shift.approval_status = 'approved'
+                source_shift.note = f"{source_shift.note or ''} (Zamietnutá výmena: {note})"
+                source_shift.save()
+                
+                msg = "Výmena zamietnutá, smena vrátená pôvodnému zamestnancovi."
+
+        return Response({"detail": msg}, status=200) 
+Testovanie vymeny formulara
+
+    @action(detail=True, methods=['get'], url_path='download-exchange-pdf')
+    def download_exchange_pdf(self, request, pk=None):
+        target_shift = self.get_object()
+        source_shift = target_shift.exchange_link
+
+        if not source_shift:
+            return Response({"error": "Toto nie je výmena smeny."}, status=400)
+
+        # Použijeme novú triedu z export.py
+        exporter = ExchangeFormExporter(source_shift, target_shift)
+        return exporter.generate_response()
+class EmployeesViewSet(viewsets.ModelViewSet):
+    queryset = Employees.objects.all()
+    serializer_class = EmployeesSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self):
+        # user = self.request.user
+        # if user.role == 'worker': return Employees.objects.filter(id=user.id)
+        # return Employees.objects.all()
+        return Employees.objects.filter(is_active=True).order_by('last_name')
+
+class TypeShiftViewSet(viewsets.ModelViewSet):
+    queryset = TypeShift.objects.all()
+    serializer_class = TypeShiftSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def perform_create(self, serializer):
+        if self.request.user.role == 'worker': raise PermissionDenied()
+        serializer.save()
+
+class AttendanceViewSet(viewsets.ModelViewSet):
+    queryset = Attendance.objects.all()
+    serializer_class = AttendanceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [] 
+
+    def get_queryset(self):
+        # 1. Začneme so všetkými dátami
+        queryset = Attendance.objects.all().order_by('-date')
+        user = self.request.user
+
+        # Debug výpis do terminálu (uvidíš ho tam, kde beží runserver)
+        print(f"--- FILTER DEBUG START ---")
+        
+        # 2. Základný filter podľa role (Worker vidí len svoje)
+        if getattr(user, 'role', 'worker') == 'worker':
+            queryset = queryset.filter(user=user)
+
+        # 3. Získanie parametrov z URL
+        year = self.request.query_params.get('year')
+        month = self.request.query_params.get('month')
+        
+        print(f"Prijaté parametre: Rok={year}, Mesiac={month}")
+
+        # 4. APLIKÁCIA FILTRA
+        if year and month:
+            try:
+                # Prevedieme na int, aby sme mali istotu
+                y = int(year)
+                m = int(month)
+                
+                # Samotné filtrovanie
+                queryset = queryset.filter(date__year=y, date__month=m)
+                
+                print(f"✅ Filter úspešný. Vraciam {queryset.count()} záznamov pre {y}/{m}.")
+            except ValueError:
+                print("❌ Chyba: Rok alebo mesiac nie sú platné čísla.")
+        else:
+            print("⚠️ Žiadny filter roka/mesiaca - vraciam všetko.")
+
+        print(f"--- FILTER DEBUG END ---")
+        return queryset
+   
+    @action(detail=False, methods=['get'], url_path='export-attendance-pdf')
+    def export_attendance_pdf(self, request):
+        try:
+            year = int(request.query_params.get('year'))
+            month = int(request.query_params.get('month'))
+            user_id = int(request.query_params.get('user_id'))
+            exporter = AttendancePdfExporter(user_id, year, month)
+            return exporter.generate_response()
+        except: return Response({"error": "Chyba parametrov"}, status=400)
+
+    
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        if instance.type_shift:
+            if instance.type_shift.id == 20: handle_night_shift(instance)
+            handle_start_shift_time(instance)
+            handle_end_shift_time(instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if instance.type_shift:
+            handle_start_shift_time(instance)
+            handle_end_shift_time(instance)
+
+class ChangeReasonViewSet(viewsets.ModelViewSet):
+    queryset = ChangeReason.objects.all()
+    serializer_class = ChangeReasonSerializers
+    permission_classes = [permissions.IsAuthenticated]
+
+class CalendarDayViewSet(viewsets.ModelViewSet):
+    queryset = CalendarDay.objects.all()
+    serializer_class = CalendarDaySerializers
+    permission_classes = [permissions.IsAuthenticated]
+
+# ==========================================
+# 4. API VIEWS PRE REPORTY (Pôvodné - teraz kompletné)
 # ==========================================
 
 class BaseWorkedHoursAPIView(APIView):
@@ -42,43 +505,6 @@ class BaseWorkedHoursAPIView(APIView):
         hours = self.calculate_hours(employee_id, year, month)
         return Response({"worked_hours": hours})
 
-from .models import CalendarDay  # 👈 Nezabudnite importovať model!
-from .services import calculate_working_fund,get_balances_up_to
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import permissions
-
-class MonthlyBalancesAPIView(APIView):
-    def get(self, request, year, month):
-        # Zavoláme servisnú funkciu
-        balances = get_balances_up_to(year, month)
-        return Response(balances)
-
-class WorkingFundAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, year: int, month: int):
-        # 1. Existujúci výpočet fondu
-        fund = calculate_working_fund(year, month)
-
-        # 2. 👇 NOVÉ: Získanie zoznamu sviatkov pre daný mesiac
-        holidays_query = CalendarDay.objects.filter(
-            date__year=year, 
-            date__month=month, 
-            is_holiday=True  # Hľadáme len dni označené ako sviatok
-        )
-        
-        # Vytvoríme jednoduchý zoznam čísel dní (napr. [1, 6, 15] pre január)
-        # Frontend očakáva pole čísiel, aby vedel porovnať s day.dayNum
-        holiday_days = [h.date.day for h in holidays_query]
-
-        # 3. Vrátenie odpovede aj so zoznamom sviatkov
-        return Response({
-            "year": year,
-            "month": month,
-            "working_fund_hours": fund,
-            "holidays": holiday_days  # 👈 Toto pole využije Angular na farbenie
-        })
 class WorkedHoursAPIView(BaseWorkedHoursAPIView):
     def calculate_hours(self, employee_id, year, month):
         return calculate_worked_hours(employee_id, year, month)
@@ -107,527 +533,52 @@ class NightShiftHoursApiView(BaseWorkedHoursAPIView):
     def calculate_hours(self, employee_id, year, month):
         return calculate_night_shift_hours(employee_id, year, month)
 
-class DashboardView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        return Response({"message": f"Ahoj {request.user.username}, toto je tvoj dashboard"})
-
-class TestView(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        return Response({"message": "OK"})
-
-class ActiveUserListView(generics.ListAPIView):
-    serializer_class = EmployeesSerializer
-    def get_queryset(self):
-         return Employees.objects.all().prefetch_related('planned_shifts')
-
-class CurrentUserView(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        user = request.user
-        serializer = EmployeesSerializer(user)
-        return Response(serializer.data)
-
-class CustomAuthToken(ObtainAuthToken):
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response({
-            'token': token.key,
-            'user_id': user.id,
-            'username': user.username,
-            'role': user.role
-        })
-
-# ==========================================
-# VIEWSETS (CRUD Operácie)
-# ==========================================
-
-class EmployeesViewSet(viewsets.ModelViewSet):
-    queryset = Employees.objects.all()
-    serializer_class = EmployeesSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user=self.request.user
-        if user.role == 'worker':
-            return Employees.objects.filter(id=user.id)
-        return Employees.objects.all()
-    
-    def get_permissions(self):
-        user = self.request.user
-        if user.is_authenticated and user.role == 'worker':
-            self.http_method_names = ['get', 'head', 'options']
-        else:
-            self.http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
-        return super().get_permissions()
-
-class TypeShiftViewSet(viewsets.ModelViewSet):
-    queryset = TypeShift.objects.all()
-    serializer_class = TypeShiftSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_permissions(self):
-        user = self.request.user
-        if user.role == 'worker':
-            self.http_method_names = ['get', 'head', 'options']
-        else:
-            self.http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
-        return super().get_permissions()
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if user.role == 'worker':
-            raise PermissionDenied("Nemáte oprávnenie vytvárať smeny.")
-        serializer.save()
-
-class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.all()
-    serializer_class = AttendanceSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    @action(detail=False, methods=['get'], url_path='export-attendance-pdf')
-    def export_attendance_pdf(self, request):
-        """
-        Generuje PDF Výkaz pedagogického pracovníka na základe dochádzky.
-        """
-        try:
-            year = int(request.query_params.get('year'))
-            month = int(request.query_params.get('month'))
-            user_id = int(request.query_params.get('user_id'))
-        except (TypeError, ValueError):
-            return Response({"error": "Chýbajú parametre year, month alebo user_id"}, status=400)
-            
-        exporter = AttendancePdfExporter(user_id, year, month)
-        return exporter.generate_response()
-    def get_queryset(self):
-        user = self.request.user
-        if user.role == 'worker':
-            return Attendance.objects.filter(user=user)
-        return Attendance.objects.all()
-
-    def perform_create(self, serializer):
-        # 1. Uložíme základný záznam
-        instance = serializer.save()
-
-        # 2. Logika naviazaná na typ smeny
-        if instance.type_shift:
-            # A) Nočná smena (ID 20) -> vytvorenie 2. dňa
-            if instance.type_shift.id == 20:
-                handle_night_shift(instance)
-            
-            # B) Riešenie časov (extra smeny pri skoršom príchode/neskoršom odchode)
-            handle_start_shift_time(instance)
-            handle_end_shift_time(instance)
-
-    def perform_update(self, serializer):
-        # Pri update tiež kontrolujeme časy
-        if 'user' not in serializer.validated_data:
-            instance = serializer.save(user=self.get_object().user)
-        else:
-            instance = serializer.save()
-
-        if instance.type_shift:
-            # Pri zmene času sa môže aktivovať extra smena
-            handle_start_shift_time(instance)
-            handle_end_shift_time(instance)
-
-    def perform_destroy(self, instance):
-        user = self.request.user
-        if user.role == 'worker' and instance.user != user:
-            raise PermissionDenied("Nemôžete zmazať cudzí záznam.")
-        instance.delete()
-
-# ==========================================
-# PLANNER SHIFTS VIEWSET (Opravený)
-# ==========================================
-from django.db import transaction
-from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser, FormParser
-from datetime import date, datetime, time
-from calendar import monthrange
-import csv
-import io
-import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
-from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
-import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
-
-# ... tvoje importy ...
-
-
-class PlannerShiftsViewSet(viewsets.ModelViewSet):
-    queryset = PlannedShifts.objects.all()
-    serializer_class = PlannedShiftsSerializer
-    permission_classes = [IsManagerOrReadOnly]
-
-
-
-    @action(detail=False, methods=['get'], url_path='export-vacation-forms')
-    def export_vacation_forms(self, request):
-        """
-        Generuje PDF lístky na dovolenku na základe plánu.
-        Prerušenie dátumov vytvorí nový lístok.
-        """
-        try:
-            year = int(request.query_params.get('year'))
-            month = int(request.query_params.get('month'))
-            user_id = int(request.query_params.get('user_id'))
-        except (TypeError, ValueError):
-             # Ak nie sú parametre, skúsime default alebo error
-             return Response({"error": "Chýbajú parametre year, month alebo user_id"}, status=400)
-            
-        exporter = VacationFormExporter(user_id, year, month)
-        return exporter.generate_response()
-    
-    @action(detail=False, methods=['get'], url_path='export-complex-roster')
-    def export_complex_roster(self, request):
-        
-        # 1. Získanie parametrov z URL (?year=2025&month=4)
-        try:
-            year = int(request.query_params.get('year', 2025))
-            month = int(request.query_params.get('month', 4))
-        except ValueError:
-            return Response({"error": "Neplatný formát roku alebo mesiaca."}, status=400)
-        
-        # 2. Vytvorenie inštancie exportera
-        # (Tu sa zinicializuje Workbook, načítajú štýly a konfigurácie)
-        exporter = MonthlyRosterExporter(year, month)
-        
-        # 3. Spustenie generovania a vrátenie odpovede
-        # (Metóda generate_response() spraví všetku prácu:
-        #  - načíta dáta z DB
-        #  - skontroluje či existujú (ak nie, vyhodí 400)
-        #  - vykreslí hlavičku, tabuľku, sumáre a legendu
-        #  - vráti hotový HttpResponse s Excel súborom)
-        return exporter.generate_response()
-  
-    @action(detail=False, methods=['post'], url_path='save-roster-matrix')
-    def save_roster_matrix(self, request):
-        """
-        Tento endpoint slúži ako 'Backend Formulár' pre uloženie celého rozdeľovníka naraz.
-        Frontend pošle JSON: { "year": 2025, "month": 4, "shifts": [...] }
-        """
-        serializer = BulkRosterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        data = serializer.validated_data
-        year = data['year']
-        month = data['month']
-        shifts_data = data['shifts']
-        
-        # Získame rozsah mesiaca pre bezpečné mazanie/úpravu
-        start_date = date(year, month, 1)
-        _, last_day = monthrange(year, month)
-        end_date = date(year, month, last_day)
-
-        saved_count = 0
-        
-        try:
-            with transaction.atomic():
-                # Voliteľné: Vymazať existujúce plány pre dotknutých užívateľov v tomto mesiaci?
-                # Alebo použijeme update_or_create pre "inteligentné" prepísanie.
-                # Tu používam prístup update_or_create pre každú bunku.
-                
-                for item in shifts_data:
-                    user_id = item['user_id']
-                    shift_date = item['date']
-                    
-                    # Validácia, či dátum patrí do mesiaca (bezpečnosť)
-                    if shift_date.year != year or shift_date.month != month:
-                        continue
-
-                    # Ak type_shift_id je None, znamená to zmazanie smeny (vyčistenie bunky)
-                    if item.get('type_shift_id') is None:
-                        PlannedShifts.objects.filter(
-                            user_id=user_id, 
-                            date=shift_date
-                        ).delete()
-                        continue
-
-                    # Príprava dát na uloženie
-                    defaults = {
-                        'type_shift_id': item['type_shift_id'],
-                        'custom_start': item.get('custom_start'),
-                        'custom_end': item.get('custom_end'),
-                        'note': item.get('note', ''),
-                        'hidden': False
-                    }
-                    
-                    # Logika pre automatické časy, ak nie sú zadané (podľa TypeShift)
-                    if not defaults['custom_start']:
-                         ts = TypeShift.objects.get(id=item['type_shift_id'])
-                         defaults['custom_start'] = ts.start_time
-                         defaults['custom_end'] = ts.end_time
-
-                    # Update alebo Create
-                    shift, created = PlannedShifts.objects.update_or_create(
-                        user_id=user_id,
-                        date=shift_date,
-                        defaults=defaults
-                    )
-                    
-                    # Aplikovanie logiky pre nočné smeny (z tvojho pôvodného kódu)
-                    if shift.type_shift and shift.type_shift.id == 20:
-                        split_night_planned_shift(shift)
-                    
-                    saved_count += 1
-
-            return Response({"detail": f"Úspešne uložených/aktualizovaných {saved_count} záznamov."}, status=200)
-        
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-    # @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser], url_path='import-csv')
-    # def import_roster_csv(self, request):
-    #     """
-    #     Parsuje tvoj špecifický Excel/CSV formát:
-    #     Row 3: Mená zamestnancov (každých X stĺpcov)
-    #     Col A: Dátum
-    #     Cells: Hodnoty (napr. 12, 7, D, N)
-    #     """
-    #     file_obj = request.FILES.get('file')
-    #     if not file_obj:
-    #         return Response({"error": "Súbor chýba"}, status=400)
-
-    #     try:
-    #         # Načítanie CSV
-    #         decoded_file = file_obj.read().decode('utf-8').splitlines()
-    #         reader = csv.reader(decoded_file, delimiter=',') # alebo ';' podľa formátu
-    #         rows = list(reader)
-            
-    #         # --- LOGIKA PARSOVANIA TVOJHO SÚBORU ---
-    #         # 1. Nájdenie hlavičky s menami (Riadok 3 v tvojom CSV - index 2)
-    #         header_row_idx = 2 
-    #         header = rows[header_row_idx]
-            
-    #         # Mapovanie mien na user_id (Toto musíš prispôsobiť tvojej DB)
-    #         # Príklad: "p.Polyak" -> user_id: 10
-    #         employee_map = {} 
-    #         # Tu prechádzame stĺpce a hľadáme mená. V tvojom CSV sú mená občasne.
-    #         # Musíš si vytvoriť logiku, ktorý stĺpec patrí komu.
-    #         # Zjednodušený príklad:
-    #         current_user = None
-    #         col_user_map = {} # {column_index: user_name}
-            
-    #         for i, cell in enumerate(header):
-    #             if cell and cell.strip():
-    #                 current_user = cell.strip() # Napr "p.Polyak"
-    #                 # Skúsime nájsť Usera v DB podľa mena
-    #                 # user = Employees.objects.filter(last_name__icontains=current_user.split('.')[1]).first()
-    #                 # if user: col_user_map[i] = user.id
-            
-    #         # 2. Iterácia cez dni (od riadku 4 - index 3)
-    #         created_count = 0
-    #         with transaction.atomic():
-    #             for i in range(3, len(rows)):
-    #                 row = rows[i]
-    #                 if not row or not row[0]: continue # Preskočiť prázdne riadky
-                    
-    #                 day_str = row[0].replace('.', '') # "1." -> "1"
-    #                 try:
-    #                     day = int(day_str)
-    #                 except ValueError:
-    #                     continue # Nie je to riadok s dňom
-                        
-    #                 # Dátum (Musíme vedieť rok a mesiac - buď z inputu alebo zo súboru)
-    #                 # Predpokladám, že rok/mesiac pošleš v query params alebo sú v názve súboru
-    #                 target_year = int(request.query_params.get('year', 2025))
-    #                 target_month = int(request.query_params.get('month', 4))
-    #                 current_date = date(target_year, target_month, day)
-
-    #                 # Teraz prejdeme stĺpce priradené userom
-    #                 # V tvojom CSV sa zdá, že pre každého usera je viac stĺpcov (SN, Do, Pp...)
-    #                 # Musíš presne definovať, ktorý stĺpec obsahuje typ smeny.
-    #                 # Podľa snippetu: Polyak má stĺpce 2-7, hodnota je v stĺpci 2?
-                    
-    #                 # *PSEUDOKÓD PRE SPRACOVANIE BUNKY*:
-    #                 # value = row[user_column_index]
-    #                 # shift_type = map_csv_value_to_shift_type(value)
-    #                 # if shift_type:
-    #                 #    PlannedShifts.objects.update_or_create(...)
-            
-    #         return Response({"detail": "Import dokončený (Logiku parsovania treba doladiť podľa presných stĺpcov)."}, status=200)
-
-    #     except Exception as e:
-    #         return Response({"error": f"Chyba pri spracovaní: {str(e)}"}, status=500)
-
-
-
-
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_anonymous:
-            return PlannedShifts.objects.none()
-
-        if user.role == 'worker':
-            return PlannedShifts.objects.filter(user=user, hidden=False)
-        
-        # Admin/Manager filtre
-        queryset = PlannedShifts.objects.filter(hidden=False)
-        month = self.request.query_params.get('month')
-        year = self.request.query_params.get('year')
-        user_id = self.request.query_params.get('user')
-        
-        if month and year:
-            queryset = queryset.filter(date__year=year, date__month=month)
-        if user_id:
-            queryset = queryset.filter(user_id=user_id)
-            
-        return queryset
-
-    def create(self, request, *args, **kwargs):
-        # 1. Podpora pre Bulk Create (zoznam objektov)
-        is_many = isinstance(request.data, list)
-        
-        # 2. Serializácia
-        serializer = self.get_serializer(data=request.data, many=is_many)
-        serializer.is_valid(raise_exception=True)
-        
-        # 3. Uloženie (volá perform_create)
-        self.perform_create(serializer)
-        
-        # 4. VRÁTENIE ODPOVEDE (Toto opravuje chybu 500)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-    def perform_create(self, serializer):
-        # Uloženie dát
-        created_data = serializer.save()
-
-        # Logika pre rozdelenie nočnej smeny (ID 20)
-        # Musíme zistiť, či sme vytvorili jeden objekt alebo zoznam
-        if isinstance(created_data, list):
-            for shift in created_data:
-                if shift.type_shift and shift.type_shift.id == 20:
-                    split_night_planned_shift(shift)
-        else:
-            if created_data.type_shift and created_data.type_shift.id == 20:
-                split_night_planned_shift(created_data)
-
-    def perform_update(self, serializer):
-        planned_shift = serializer.save()
-        # Aj pri úprave kontrolujeme nočnú smenu
-        if planned_shift.type_shift and planned_shift.type_shift.id == 20:
-            split_night_planned_shift(planned_shift)
-
-    # --- CUSTOM ACTIONS ---
-
-    @action(detail=False, methods=['post'])
-    def copy_plan(self, request):
-        s_year = request.data.get('source_year')
-        s_month = request.data.get('source_month')
-        t_year = request.data.get('target_year')
-        t_month = request.data.get('target_month')
-        user_id = request.data.get('user_id')
-
-        if not all([s_year, s_month, t_year, t_month]):
-            return Response({"error": "Chýbajú povinné údaje."}, status=400)
-
-        try:
-            result = copy_monthly_plan(int(s_year), int(s_month), int(t_year), int(t_month), user_id)
-            return Response({"detail": "Plán skopírovaný.", "stats": result}, status=200)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-    @action(detail=False, methods=['get'], url_path='summary/(?P<user_id>\d+)/(?P<year>\d+)/(?P<month>\d+)')
-    def monthly_summary(self, request, user_id=None, year=None, month=None):
-        if not user_id or not year or not month:
-            return Response({"error": "Chýbajú parametre"}, status=400)
-        try:
-            summary_data = get_planned_monthly_summary(int(user_id), int(year), int(month))
-            return Response(summary_data)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.hidden = True
-        instance.save()
-        return Response({"detail": "Smena bola skrytá."}, status=status.HTTP_200_OK)
-
-class ChangeReasonViewSet(viewsets.ModelViewSet):
-    queryset = ChangeReason.objects.all()
-    serializer_class = ChangeReasonSerializers
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_permissions(self):
-        user = self.request.user
-        if user.role == 'worker':
-            self.http_method_names = ['get', 'head', 'options']
-        else:
-            self.http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
-        return super().get_permissions()
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if user.role == 'worker':
-            raise PermissionDenied("Nemáte oprávnenie vytvárať tieto dôvody.")
-        serializer.save()
-
-class CalendarDayViewSet(viewsets.ModelViewSet):
-    queryset = CalendarDay.objects.all()
-    serializer_class = CalendarDaySerializers
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_permissions(self):
-        user = self.request.user
-        # Tu bola v pôvodnom kóde malá logická chyba 'and', opravené na štandard
-        if user.role == 'worker': 
-            self.http_method_names = ['get', 'head', 'options']
-        else:
-            self.http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
-        return super().get_permissions()
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if user.role == 'worker':
-            raise PermissionDenied("Nemáte oprávnenie vytvárať tieto dôvody.")
-        serializer.save()
-
 class PlannedHoursSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, employee_id, year, month):
-        # Zavoláme funkciu zo services.py
         data = get_planned_monthly_summary(employee_id, year, month)
-        
-        # Vrátime výsledok ako JSON
         return Response(data)
     
 
+# WorkTrackApi/views.py
+class YearlyOverviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request):
+        try:
+            year = int(request.query_params.get('year', datetime.now().year))
+            data = get_yearly_report_data(year)
+            return Response(data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
-def map_csv_value_to_shift_type(value):
+class CopyMonthlyPlanView(APIView):
     """
-    Prekladá hodnoty z bunky Excelu na TypeShift ID.
-    Prispôsob si IDs podľa tvojej databázy.
+    Endpoint na skopírovanie zmien z jedného mesiaca do druhého.
+    URL: POST /api/plannedshift/copy/
+    Body: { "source_year": 2025, "source_month": 1, "target_year": 2025, "target_month": 2 }
     """
-    if not value:
-        return None
-        
-    value = str(value).strip().upper() # Pre istotu pretypujeme na string
-    
-    if not value:
-        return None
-        
-    # TOTO UPRAV PODĽA SVOJICH ID V DATABÁZE (tabuľka TypeShift)
-    mapping = {
-        '12': 1,    # Príklad: ID 1 je Denná 12ka
-        'D': 1,     # Aj "D" znamená ID 1
-        'N': 20,    # Príklad: ID 20 je Nočná
-        '7': 5,     # 7h služba
-        '9.5': 6,   # 9.5h služba
-        'DO': 21,   # Dovolenka
-        'P': 23,    # PN
-        # Pridaj ďalšie skratky...
-    }
-    
-    return mapping.get(value)
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            user = request.user
+            data = request.data
+            
+            source_year = int(data.get('source_year'))
+            source_month = int(data.get('source_month'))
+            target_year = int(data.get('target_year'))
+            target_month = int(data.get('target_month'))
+
+            # Volanie funkcie zo services.py
+            count = copy_monthly_plan(user, source_year, source_month, target_year, target_month)
+            
+            return Response({
+                "message": f"Úspešne skopírovaných {count} smien.",
+                "count": count
+            }, status=status.HTTP_200_OK)
+
+        except (ValueError, TypeError):
+            return Response({"error": "Neplatné dáta (rok alebo mesiac)."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

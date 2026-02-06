@@ -13,7 +13,7 @@ from django.utils.dateparse import parse_time
 class TypeShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = TypeShift
-        fields = ['id', 'nameShift', 'start_time', 'end_time', 'duration_time','shortName']
+        fields = ['id', 'nameShift', 'start_time', 'end_time', 'duration_time','shortName','allow_variable_time']
 
 class ChangeReasonSerializers(serializers.ModelSerializer):
     class Meta:
@@ -29,7 +29,7 @@ class PlannedShiftsSerializer(serializers.ModelSerializer):
     duration = serializers.SerializerMethodField()
 # Pre čítanie: Vrátime celý objekt (názov, popis)
     change_reason_details = ChangeReasonSerializers(source='change_reason', read_only=True)
-    
+    target_user_id = serializers.IntegerField(write_only=True, required=False)
     # Pre zápis: Akceptujeme ID
     change_reason_id = serializers.PrimaryKeyRelatedField(
         queryset=ChangeReason.objects.all(), 
@@ -41,7 +41,7 @@ class PlannedShiftsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlannedShifts
         fields = '__all__'
-        read_only_fields = ['calendar_day']
+        read_only_fields = ['calendar_day', 'exchange_link']
         extra_kwargs = {
             'custom_start': {'required': False, 'allow_null': True},
             'custom_end': {'required': False, 'allow_null': True},
@@ -141,13 +141,33 @@ class AttendanceSerializer(serializers.ModelSerializer):
         required=False, 
         allow_null=True
     )
-
+    employee_name = serializers.SerializerMethodField()
+    
+    # Vytiahneme názov a skratku smeny cez vzťah (relation)
+    shift_name = serializers.CharField(source='type_shift.nameShift', read_only=True)
+    shift_short = serializers.CharField(source='type_shift.shortName', read_only=True)
+    
+    
     class Meta:
         model = Attendance
         fields = '__all__'
         extra_kwargs = {
             'date': {'required': False, 'allow_null': True},
         }
+
+    def get_employee_name(self, obj):
+        # Predpokladám, že model 'Employees' má first_name a last_name, 
+        # alebo je prepojený na Django User. Uprav podľa reality.
+        if not obj.user:
+            return "Neznámy"
+        
+        # Možnosť A: Ak je 'user' priamo Employees model s menami
+        full_name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+        
+        # Možnosť B: Ak je Employees prepojený na Django User cez OneToOne
+        # full_name = f"{obj.user.user.first_name} {obj.user.user.last_name}".strip()
+
+        return full_name if full_name else str(obj.user)
 
     def to_time(self, value):
         if isinstance(value, time): return value

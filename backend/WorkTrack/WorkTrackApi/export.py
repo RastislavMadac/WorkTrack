@@ -1167,4 +1167,157 @@ class VacationFormExporter:
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response.write(pdf)
         return response
+
+class ExchangeFormExporter:
+    def __init__(self, source_shift, target_shift):
+        self.source_shift = source_shift
+        self.target_shift = target_shift
+        self.employee = source_shift.user
+        
+        # --- REGISTRÁCIA FONTOV (Rovnako ako v VacationFormExporter) ---
+        self.custom_font = 'Helvetica'
+        self.custom_font_bold = 'Helvetica-Bold'
+        
+        try:
+            fonts_dir = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts')
+            arial_path = os.path.join(fonts_dir, 'arial.ttf')
+            arialbd_path = os.path.join(fonts_dir, 'arialbd.ttf')
+            
+            if os.path.exists(arial_path) and os.path.exists(arialbd_path):
+                pdfmetrics.registerFont(TTFont('ArialCustom', arial_path))
+                pdfmetrics.registerFont(TTFont('ArialBoldCustom', arialbd_path))
+                self.custom_font = 'ArialCustom'
+                self.custom_font_bold = 'ArialBoldCustom'
+        except Exception:
+            pass
+        
+        # Nastavenie štýlov
+        self.styles = getSampleStyleSheet()
+        # Nadpis (Väčší, Bold, Center)
+        self.styles.add(ParagraphStyle(name='ExchangeTitle', parent=self.styles['Normal'], 
+                                       fontName=self.custom_font_bold, fontSize=16, 
+                                       alignment=TA_CENTER, spaceAfter=10*mm))
+        # Bežný text
+        self.styles.add(ParagraphStyle(name='ExchangeText', parent=self.styles['Normal'], 
+                                       fontName=self.custom_font, fontSize=11, leading=14))
+        # Bold text
+        self.styles.add(ParagraphStyle(name='ExchangeLabel', parent=self.styles['Normal'], 
+                                       fontName=self.custom_font_bold, fontSize=11, leading=14))
+
+        self.buffer = BytesIO()
+        
+        # A4 Portrait (Na rozdiel od dovolenky, ktorá bola A5)
+        self.doc = SimpleDocTemplate(
+            self.buffer, 
+            pagesize=A4,
+            rightMargin=25*mm, leftMargin=25*mm, 
+            topMargin=20*mm, bottomMargin=20*mm
+        )
+        self.elements = []
+
+    def _get_duration_string(self):
+        """Pomocná funkcia na formátovanie času"""
+        if self.source_shift.custom_start and self.source_shift.custom_end:
+            # Predpokladáme, že custom_start je time objekt alebo string
+            s = str(self.source_shift.custom_start)[:5] # Oreže sekundy
+            e = str(self.source_shift.custom_end)[:5]
+            return f"{s} - {e}"
+        return "Podľa rozpisu"
+
+    def generate_response(self):
+        # Dáta
+        applicant_name = f"{self.employee.first_name} {self.employee.last_name}"
+        substitute_name = f"{self.target_shift.user.first_name} {self.target_shift.user.last_name}"
+        shift_date_str = self.source_shift.date.strftime("%d.%m.%Y")
+        today_str = date.today().strftime("%d.%m.%Y")
+        hours_str = self._get_duration_string()
+        reason_text = self.source_shift.change_reason.name if self.source_shift.change_reason else "Výmena služby"
+
+        # --- 1. HLAVIČKA (Meno a Dátum) ---
+        # Tabuľka bez rámikov pre zarovnanie
+        data_header = [
+            [Paragraph(f"<b>Meno a priezvisko žiadateľa:</b> {applicant_name}", self.styles['ExchangeText'])],
+            [Paragraph(f"<b>Dňa:</b> {today_str} <b>vo Veľkom Slavkove</b>", self.styles['ExchangeText'])]
+        ]
+        t_header = Table(data_header, colWidths=[160*mm])
+        t_header.setStyle(TableStyle([
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        self.elements.append(t_header)
+        self.elements.append(Spacer(1, 15*mm))
+
+        # --- 2. NADPIS ---
+        self.elements.append(Paragraph("Žiadosť o povolenie výmeny služby", self.styles['ExchangeTitle']))
+        self.elements.append(Spacer(1, 10*mm))
+
+        # --- 3. HLAVNÝ TEXT ---
+        # Používame f-string s HTML tagmi (<b> pre bold) v rámci Paragraphu
+        text_body = f"""
+        Dolepodpísaný/á žiadam vedenie CPDaR Poprad o povolenie výmeny služby dňa 
+        <b>{shift_date_str}</b> v počte hodín <b>{hours_str}</b> 
+        s pracovníkom/pracovníčkou: <b>{substitute_name}</b>.
+        """
+        self.elements.append(Paragraph(text_body, self.styles['ExchangeText']))
+        self.elements.append(Spacer(1, 10*mm))
+
+        # --- 4. DÔVOD ---
+        self.elements.append(Paragraph("<b>Dôvod žiadosti:</b>", self.styles['ExchangeText']))
+        self.elements.append(Spacer(1, 2*mm))
+        self.elements.append(Paragraph(f"<i>{reason_text}</i>", self.styles['ExchangeText']))
+        self.elements.append(Spacer(1, 15*mm))
+
+        # --- 5. ODPRACOVANIE (Riadok s bodkami) ---
+        self.elements.append(Paragraph(
+            "Výkon služby v počte hodín odpracujem dňa ...............................................................", 
+            self.styles['ExchangeText']
+        ))
+        self.elements.append(Spacer(1, 25*mm))
+
+        # --- 6. PODPISY (Tabuľka) ---
+        # 1. Riadok: Podpis žiadateľa (Vľavo)
+        # 2. Riadok: Vedúci (Vľavo) a Riaditeľ (Vpravo)
+        
+        dots = "..............................................................."
+        
+        # Riadok 1: Žiadateľ
+        data_sig_1 = [
+            [dots, ""],
+            ["Podpis žiadateľa", ""]
+        ]
+        t_sig_1 = Table(data_sig_1, colWidths=[80*mm, 80*mm])
+        t_sig_1.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('FONTNAME', (0,1), (-1,1), self.custom_font),
+            ('FONTSIZE', (0,1), (-1,1), 9),
+            ('TOPPADDING', (0,1), (-1,1), 0),
+        ]))
+        self.elements.append(t_sig_1)
+        self.elements.append(Spacer(1, 15*mm))
+
+        # Riadok 2: Vedúci a Riaditeľ
+        data_sig_2 = [
+            [dots, dots],
+            ["Podpis vedúceho výchovy", "Podpis riaditeľa CPDaR"]
+        ]
+        t_sig_2 = Table(data_sig_2, colWidths=[80*mm, 80*mm])
+        t_sig_2.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('FONTNAME', (0,1), (-1,1), self.custom_font),
+            ('FONTSIZE', (0,1), (-1,1), 9),
+            ('TOPPADDING', (0,1), (-1,1), 0), # Aby bol text hneď pod bodkami
+        ]))
+        self.elements.append(t_sig_2)
+
+        # --- GENERATE PDF ---
+        self.doc.build(self.elements)
+        
+        pdf = self.buffer.getvalue()
+        self.buffer.close()
+        
+        response = HttpResponse(content_type='application/pdf')
+        filename = f"Ziadost_o_vymenu_{self.source_shift.id}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response.write(pdf)
+        return response
 #end

@@ -1,6 +1,6 @@
 from django.urls import path, include 
 from rest_framework import routers 
-from .views import EmployeesViewSet,TypeShiftViewSet,AttendanceViewSet, PlannerShiftsViewSet,ChangeReasonViewSet,CalendarDayViewSet,WorkingFundAPIView, MonthlyBalancesAPIView,WorkedHoursAPIView,SaturdaySundayHoursApiView,WeekendHoursApiView,HolidayHoursApiView,CompareHoursApiView,TotalHoursApiView,NightShiftHoursApiView,CustomAuthToken,CurrentUserView,TestView,ActiveUserListView,PlannedHoursSummaryView
+from .views import CopyMonthlyPlanView, EmployeesViewSet,TypeShiftViewSet,AttendanceViewSet, PlannerShiftsViewSet,ChangeReasonViewSet,CalendarDayViewSet,WorkingFundAPIView, MonthlyBalancesAPIView,WorkedHoursAPIView,SaturdaySundayHoursApiView,WeekendHoursApiView,HolidayHoursApiView,CompareHoursApiView,TotalHoursApiView,NightShiftHoursApiView,CustomAuthToken,CurrentUserView,TestView,ActiveUserListView,PlannedHoursSummaryView, MonthlyStatsView, YearlyOverviewView
 
 router=routers.DefaultRouter() 
 router.register(r'employees', EmployeesViewSet)
@@ -13,6 +13,9 @@ router.register(r'calendarday', CalendarDayViewSet)
 
 
 urlpatterns = [ 
+    path('plannedshift/copy/', CopyMonthlyPlanView.as_view(), name='copy-monthly-plan'),
+    path('reports/yearly-overview/', YearlyOverviewView.as_view()),
+    path('plannedshift/stats/', MonthlyStatsView.as_view(), name='monthly-stats'),
     path('balances/<int:year>/<int:month>/', MonthlyBalancesAPIView.as_view()),
     path('api-token-auth/', CustomAuthToken.as_view(), name='api-token-auth'),
     path('active-users/', ActiveUserListView.as_view(), name='active-users'),
