@@ -1,0 +1,13 @@
+<div *ngIf="notification" 
+     class="toast" 
+     [ngClass]="notification.type"
+     (click)="close()">
+  
+  <span class="icon">
+    {{ notification.type === 'success' ? '✅' : (notification.type === 'error' ? '⚠️' : 'ℹ️') }}
+  </span>
+  
+  <span class="message">{{ notification.message }}</span>
+  
+  <button class="close-btn" (click)="close()">×</button>
+</div>

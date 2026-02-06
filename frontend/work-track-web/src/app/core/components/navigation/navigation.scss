@@ -1,0 +1,86 @@
+.main-nav {
+    display: flex;
+    gap: 4px;
+    /* Malá medzera medzi položkami */
+
+    /* Centrovanie v rámci Headeru */
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+
+    /* Pre mobil: umožníme skrolovanie ak sa nezmestia */
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    /* Skryje scrollbar vo Firefoxe */
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Skryje scrollbar v Chrome */
+}
+
+.nav-item {
+    text-decoration: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+
+    /* Farby - Neaktívny stav */
+    color: #64748b;
+    /* Slate-500 (príjemná sivá) */
+    background-color: transparent;
+
+    padding: 8px 16px;
+    border-radius: 8px;
+    /* Jemne zaoblené rohy (moderný štandard) */
+    transition: all 0.2s ease-in-out;
+    white-space: nowrap;
+    /* Aby sa text nelámal */
+
+    /* Hover efekt (nabehnutie myšou) */
+    &:hover {
+        color: #1e293b;
+        /* Tmavšia sivá */
+        background-color: #f1f5f9;
+        /* Veľmi jemné sivé pozadie */
+    }
+}
+
+/* Aktívny stav (práve otvorená stránka) */
+.active-link {
+    color: #0f172a;
+    /* Takmer čierna pre maximálnu čitateľnosť */
+    background-color: #e2e8f0;
+    /* Výraznejšie sivé pozadie (nie modré, pôsobí to luxusnejšie) */
+    font-weight: 600;
+}
+
+/* --- Varianta B: Ak chceš aktívny stav MODRÝ, použi toto namiesto sekcie vyššie: --- */
+/*
+  .active-link {
+    color: #2563eb; 
+    background-color: #eff6ff; 
+    font-weight: 600;
+  }
+  */
+
+/* Mobilné zobrazenie */
+@media (max-width: 768px) {
+    .main-nav {
+        position: static;
+        /* Zrušíme absolútne centrovanie */
+        transform: none;
+        margin: 0 10px;
+        /* Trochu miesta po bokoch */
+        justify-content: flex-start;
+        /* Zarovnanie doľava pre skrolovanie */
+    }
+
+    .nav-item {
+        padding: 8px 12px;
+        /* Menší padding na mobile */
+        font-size: 0.85rem;
+    }
+}

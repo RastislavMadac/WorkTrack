@@ -1,0 +1,291 @@
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.6); // Tmavá modrá s transparenciou
+    backdrop-filter: blur(4px); // Rozostrenie pozadia
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-card {
+    background: white;
+    width: 90%;
+    max-width: 500px;
+    border-radius: 16px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8fafc;
+
+    h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        color: #1e293b;
+        font-weight: 700;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: color 0.2s;
+
+        &:hover {
+            color: #ef4444;
+        }
+    }
+}
+
+.modal-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+// Formulárové prvky
+.form-section,
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #475569;
+    }
+}
+
+.grid-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.modern-input {
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: #334155;
+    transition: all 0.2s;
+    background-color: #fff;
+
+    &:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+}
+
+// Badge pre plán
+.plan-badge {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-top: 4px;
+    font-weight: 500;
+
+    &.found {
+        background-color: #dcfce7;
+        color: #166534;
+        border: 1px solid #bbf7d0;
+    }
+
+    &.not-found {
+        background-color: #fff7ed;
+        color: #9a3412;
+        border: 1px solid #fed7aa;
+    }
+}
+
+// Sekcia Dôvod (animovaná)
+.reason-section {
+    background-color: #eff6ff;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #dbeafe;
+    display: none; // Defaultne skryté
+    flex-direction: column;
+    gap: 8px;
+    animation: fadeIn 0.3s;
+
+    &.visible {
+        display: flex;
+    }
+
+    .info-text {
+        font-size: 0.8rem;
+        color: #2563eb;
+        margin-bottom: 4px;
+    }
+
+    .highlight {
+        border-color: #60a5fa;
+        background-color: #ffffff;
+    }
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+// Tlačidlá
+.btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    border: none;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+
+    &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.3);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+}
+
+.btn-ghost {
+    background: transparent;
+    color: #64748b;
+
+    &:hover {
+        background: #e2e8f0;
+        color: #1e293b;
+    }
+}
+
+// Animácie
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Pridaj toto do existujúceho SCSS */
+
+.highlight-bg {
+    background-color: #f1f5f9;
+    /* Jemne sivá/modrá */
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border: 1px solid #e2e8f0;
+
+    label {
+        color: #1e293b;
+        font-weight: 700;
+    }
+}
+
+.user-select {
+    font-weight: bold;
+    color: #0f172a;
+    border-color: #94a3b8;
+
+    &:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+}
+
+/* Pridajte do SCSS */
+
+.plan-selector {
+    margin-top: 10px;
+    background: #f0fdf4;
+    /* Jemná zelená */
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px dashed #22c55e;
+
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.small-label {
+    font-size: 0.8rem;
+    color: #15803d;
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+.plan-dropdown {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #86efac;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background: white;
+    cursor: pointer;
+
+    &:focus {
+        outline: none;
+        border-color: #16a34a;
+    }
+}
+
+/* Štýl pre disabled input dátumu */
+input[type="date"]:disabled {
+    background-color: #e2e8f0;
+    color: #64748b;
+    cursor: not-allowed;
+    border-color: #cbd5e1;
+}
+
+.status-badge.success {
+    font-size: 0.75rem;
+    color: #166534;
+    text-align: right;
+    font-weight: bold;
+}

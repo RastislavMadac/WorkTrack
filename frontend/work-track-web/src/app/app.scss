@@ -1,0 +1,7 @@
+.main-content {
+    /* Pridáme trochu miesta, aby sa obsah nelepil na hlavičku */
+    /* Hoci position: sticky to rieši, je dobré mať layout */
+    min-height: calc(100vh - 64px);
+    background-color: #f4f6f9;
+    /* Jemne sivé pozadie pre celú appku */
+}

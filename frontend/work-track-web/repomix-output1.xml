@@ -1,0 +1,3811 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/app/app.config.ts
+src/app/app.html
+src/app/app.routes.ts
+src/app/app.scss
+src/app/app.spec.ts
+src/app/app.ts
+src/app/core/components/dashboard/dashboard.html
+src/app/core/components/dashboard/dashboard.scss
+src/app/core/components/dashboard/dashboard.spec.ts
+src/app/core/components/dashboard/dashboard.ts
+src/app/core/components/header/header.html
+src/app/core/components/header/header.scss
+src/app/core/components/header/header.spec.ts
+src/app/core/components/header/header.ts
+src/app/core/components/navigation/navigation.html
+src/app/core/components/navigation/navigation.scss
+src/app/core/components/navigation/navigation.spec.ts
+src/app/core/components/navigation/navigation.ts
+src/app/core/guards/auth.guard.ts
+src/app/core/interceptors/auth.interceptor.ts
+src/app/core/interceptors/error.interceptor.ts
+src/app/core/services/auth.service.ts
+src/app/core/services/employee.service.ts
+src/app/core/services/changeReason.service.ts
+src/app/core/services/notification.service.ts
+src/app/core/services/plannedShift.service.ts
+src/app/core/services/tapeShift.service.ts
+src/app/features/auth/login/login.html
+src/app/features/auth/login/login.scss
+src/app/features/auth/login/login.spec.ts
+src/app/features/auth/login/login.ts
+src/app/features/employees/employee-list/employee-list.html
+src/app/features/employees/employee-list/employee-list.scss
+src/app/features/employees/employee-list/employee-list.spec.ts
+src/app/features/employees/employee-list/employee-list.ts
+src/app/features/planner/planner.html
+src/app/features/planner/planner.scss
+src/app/features/planner/planner.spec.ts
+src/app/features/planner/planner.ts
+src/app/shared/components/toast/toast.html
+src/app/shared/components/toast/toast.scss
+src/app/shared/components/toast/toast.spec.ts
+src/app/shared/components/toast/toast.ts
+src/app/shared/models/employee.model.ts
+src/app/shared/models/changeReason.model.ts
+src/app/shared/models/plannedShift.model.ts
+src/app/shared/models/typeShift.model.ts
+src/app/shared/models/user.model.ts
+src/environments/environment.development.ts
+src/environments/environment.ts
+src/index.html
+src/main.ts
+src/styles.scss
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/app/app.config.ts">
+import { ApplicationConfig, LOCALE_ID } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { routes } from './app.routes';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { authInterceptor } from './core/interceptors/auth.interceptor'
+import { errorInterceptor } from './core/interceptors/error.interceptor'
+import localeSk from '@angular/common/locales/sk';
+import { registerLocaleData } from '@angular/common';
+
+registerLocaleData(localeSk);
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
+    { provide: LOCALE_ID, useValue: 'sk' }
+
+  ]
+
+};
+</file>
+
+<file path="src/app/app.html">
+<app-toast></app-toast> 
+
+    
+    <router-outlet></router-outlet>
+</file>
+
+<file path="src/app/app.routes.ts">
+import { Routes } from '@angular/router';
+import { LoginComponent } from './features/auth/login/login';
+//import { PlannerComponent } from './features/planner/planner.component';
+import { authGuard } from './core/guards/auth.guard';
+import { DashboardComponent } from './core/components/dashboard/dashboard';
+import { PlannerComponent } from './features/planner/planner';
+import { EmployeeListComponent } from './features/employees/employee-list/employee-list';
+
+export const routes: Routes = [
+    {
+        path: 'login',
+        component: LoginComponent
+    },
+    {
+        path: 'dashboard',
+        component: DashboardComponent,
+        canActivate: [authGuard]
+    },
+    {
+        path: 'planner',
+        component: PlannerComponent,
+        canActivate: [authGuard]
+    },
+    {
+        path: 'employees',
+        component: EmployeeListComponent,
+        canActivate: [authGuard]
+    },
+    {
+        path: '',
+        redirectTo: '/planner',
+        pathMatch: 'full'
+    },
+    // Fallback pre neznáme adresy -> Pošli radšej na login
+    {
+        path: '**',
+        redirectTo: '/login'
+    }
+];
+</file>
+
+<file path="src/app/app.scss">
+.main-content {
+    /* Pridáme trochu miesta, aby sa obsah nelepil na hlavičku */
+    /* Hoci position: sticky to rieši, je dobré mať layout */
+    min-height: calc(100vh - 64px);
+    background-color: #f4f6f9;
+    /* Jemne sivé pozadie pre celú appku */
+}
+</file>
+
+<file path="src/app/app.spec.ts">
+import { TestBed } from '@angular/core/testing';
+import { App } from './app';
+
+describe('App', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [App],
+    }).compileComponents();
+  });
+
+  it('should create the app', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    expect(app).toBeTruthy();
+  });
+
+  it('should render title', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, work-track-web');
+  });
+});
+</file>
+
+<file path="src/app/app.ts">
+import { Component, signal } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { ToastComponent } from './shared/components/toast/toast';
+
+
+@Component({
+  selector: 'app-root',
+  imports: [RouterOutlet, ToastComponent],
+  templateUrl: './app.html',
+  styleUrl: './app.scss'
+})
+export class App {
+  protected readonly title = signal('work-track-web');
+}
+</file>
+
+<file path="src/app/core/components/dashboard/dashboard.html">
+<app-header></app-header>
+<p>dashboard works!</p>
+</file>
+
+<file path="src/app/core/components/dashboard/dashboard.scss">
+
+</file>
+
+<file path="src/app/core/components/dashboard/dashboard.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Dashboard } from './dashboard';
+
+describe('Dashboard', () => {
+  let component: Dashboard;
+  let fixture: ComponentFixture<Dashboard>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Dashboard]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(Dashboard);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/core/components/dashboard/dashboard.ts">
+import { Component } from '@angular/core';
+import { HeaderComponent } from '../header/header'
+@Component({
+  selector: 'app-dashboard',
+  imports: [HeaderComponent],
+  templateUrl: './dashboard.html',
+  styleUrl: './dashboard.scss',
+})
+export class DashboardComponent {
+
+}
+</file>
+
+<file path="src/app/core/components/header/header.html">
+<header *ngIf="isLoggedIn" class="app-header">
+  
+    <div class="brand" routerLink="/planner">
+      <div class="logo-circle">WT</div>
+      <span class="app-name">WorkTrack</span>
+    </div>
+  
+    <div class="user-controls">
+      
+      <div class="user-info">
+        <span class="greeting">Ahoj,</span>
+        <span class="username">{{ username }}</span>
+      </div>
+  
+      <button class="logout-btn" (click)="logout()" title="Odhlásiť sa">
+        Odhlásiť 🚪
+      </button>
+      
+    </div>
+   
+  </header>
+
+  <app-navigation></app-navigation>
+</file>
+
+<file path="src/app/core/components/header/header.scss">
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 2rem;
+    height: 64px;
+    background: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    /* Jemný tieň */
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    /* Aby bola nad obsahom */
+}
+
+/* --- LOGO ČASŤ --- */
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+
+    &:hover .logo-circle {
+        transform: rotate(10deg);
+    }
+}
+
+.logo-circle {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #3498db, #8e44ad);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    transition: transform 0.3s ease;
+}
+
+.app-name {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #2c3e50;
+    letter-spacing: -0.5px;
+}
+
+/* --- PRAVÁ ČASŤ (USER) --- */
+.user-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.user-info {
+    text-align: right;
+    line-height: 1.2;
+}
+
+.greeting {
+    display: block;
+    font-size: 0.75rem;
+    color: #7f8c8d;
+}
+
+.username {
+    display: block;
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 0.95rem;
+}
+
+/* --- TLAČIDLO --- */
+.logout-btn {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    color: #e74c3c;
+    /* Červená pre logout */
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &:hover {
+        background-color: #fee2e2;
+        border-color: #fecaca;
+        color: #c0392b;
+    }
+
+    &:active {
+        transform: scale(0.98);
+    }
+}
+
+/* Mobilná úprava */
+@media (max-width: 480px) {
+    .app-header {
+        padding: 0 1rem;
+    }
+
+    .app-name {
+        display: none;
+        /* Na malom mobile skryjeme názov, necháme len logo */
+    }
+
+    .greeting {
+        display: none;
+    }
+}
+</file>
+
+<file path="src/app/core/components/header/header.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Header } from './header';
+
+describe('Header', () => {
+  let component: Header;
+  let fixture: ComponentFixture<Header>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Header]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(Header);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/core/components/header/header.ts">
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Router, RouterModule } from '@angular/router'; // RouterModule pre linky
+import { AuthService } from '../../services/auth.service';
+import { NavigationComponent } from '../navigation/navigation';
+@Component({
+  selector: 'app-header',
+  standalone: true,
+  imports: [CommonModule, RouterModule, NavigationComponent],
+  templateUrl: './header.html',
+  styleUrls: ['./header.scss']
+})
+export class HeaderComponent {
+  private authService = inject(AuthService);
+
+  // Getter na získanie mena (vždy aktuálne)
+  get username(): string {
+    return this.authService.getFullName();
+  }
+
+  // Getter na zistenie, či sme prihlásení (aby sa header nezobrazil na Login stránke)
+  get isLoggedIn(): boolean {
+    return this.authService.isAuthenticated();
+  }
+
+  logout() {
+    this.authService.logout();
+  }
+}
+</file>
+
+<file path="src/app/core/components/navigation/navigation.html">
+<nav class="main-nav">
+    <a *ngFor="let item of menuItems" 
+       [routerLink]="item.link" 
+       routerLinkActive="active-link"
+       class="nav-item">
+       
+       {{ item.label }}
+       
+    </a>
+  </nav>
+</file>
+
+<file path="src/app/core/components/navigation/navigation.scss">
+.main-nav {
+    display: flex;
+    gap: 4px;
+    /* Malá medzera medzi položkami */
+
+    /* Centrovanie v rámci Headeru */
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+
+    /* Pre mobil: umožníme skrolovanie ak sa nezmestia */
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    /* Skryje scrollbar vo Firefoxe */
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Skryje scrollbar v Chrome */
+}
+
+.nav-item {
+    text-decoration: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+
+    /* Farby - Neaktívny stav */
+    color: #64748b;
+    /* Slate-500 (príjemná sivá) */
+    background-color: transparent;
+
+    padding: 8px 16px;
+    border-radius: 8px;
+    /* Jemne zaoblené rohy (moderný štandard) */
+    transition: all 0.2s ease-in-out;
+    white-space: nowrap;
+    /* Aby sa text nelámal */
+
+    /* Hover efekt (nabehnutie myšou) */
+    &:hover {
+        color: #1e293b;
+        /* Tmavšia sivá */
+        background-color: #f1f5f9;
+        /* Veľmi jemné sivé pozadie */
+    }
+}
+
+/* Aktívny stav (práve otvorená stránka) */
+.active-link {
+    color: #0f172a;
+    /* Takmer čierna pre maximálnu čitateľnosť */
+    background-color: #e2e8f0;
+    /* Výraznejšie sivé pozadie (nie modré, pôsobí to luxusnejšie) */
+    font-weight: 600;
+}
+
+/* --- Varianta B: Ak chceš aktívny stav MODRÝ, použi toto namiesto sekcie vyššie: --- */
+/*
+  .active-link {
+    color: #2563eb; 
+    background-color: #eff6ff; 
+    font-weight: 600;
+  }
+  */
+
+/* Mobilné zobrazenie */
+@media (max-width: 768px) {
+    .main-nav {
+        position: static;
+        /* Zrušíme absolútne centrovanie */
+        transform: none;
+        margin: 0 10px;
+        /* Trochu miesta po bokoch */
+        justify-content: flex-start;
+        /* Zarovnanie doľava pre skrolovanie */
+    }
+
+    .nav-item {
+        padding: 8px 12px;
+        /* Menší padding na mobile */
+        font-size: 0.85rem;
+    }
+}
+</file>
+
+<file path="src/app/core/components/navigation/navigation.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Navigation } from './navigation';
+
+describe('Navigation', () => {
+  let component: Navigation;
+  let fixture: ComponentFixture<Navigation>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Navigation]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(Navigation);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/core/components/navigation/navigation.ts">
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
+
+@Component({
+  selector: 'app-navigation',
+  standalone: true,
+  imports: [CommonModule, RouterModule],
+  templateUrl: './navigation.html',
+  styleUrls: ['./navigation.scss']
+})
+export class NavigationComponent {
+
+
+  menuItems = [
+    { label: 'Plánovač', link: '/planner', },
+    { label: 'Zamestnanci', link: '/employees' },
+    { label: 'Dochádzka', link: '/attendance' }
+  ];
+
+}
+</file>
+
+<file path="src/app/core/guards/auth.guard.ts">
+import { inject } from '@angular/core';
+import { Router, CanActivateFn } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+
+export const authGuard: CanActivateFn = (route, state) => {
+    const authService = inject(AuthService); // Použijeme tvoju service
+    const router = inject(Router);
+
+    if (authService.isAuthenticated()) {
+        return true; // Má token -> Pustíme ho ďalej
+    } else {
+        // Nemá token -> Presmerujeme na login
+        router.createUrlTree(['/login']);
+        return false;
+    }
+};
+</file>
+
+<file path="src/app/core/interceptors/auth.interceptor.ts">
+import { HttpInterceptorFn } from '@angular/common/http';
+
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+
+    // 1. Ignorujeme login endpoint (aby sme neposielali starý token a nerobili cykly)
+    if (req.url.includes('api-token-auth')) {
+        return next(req);
+    }
+
+    // 2. ZMENA: Čítame token zo sessionStorage
+    const token = sessionStorage.getItem('token');
+
+    if (token) {
+        const cloned = req.clone({
+            setHeaders: {
+                Authorization: `Token ${token}`
+            }
+        });
+        return next(cloned);
+    }
+
+    return next(req);
+};
+</file>
+
+<file path="src/app/core/interceptors/error.interceptor.ts">
+import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { catchError, throwError } from 'rxjs';
+import { NotificationService } from '../services/notification.service';
+
+export const errorInterceptor: HttpInterceptorFn = (req, next) => {
+    const notify = inject(NotificationService);
+
+    return next(req).pipe(
+        catchError((error: HttpErrorResponse) => {
+            console.log('🛑 Interceptor zachytil chybu:', error.status); // DEBUG
+
+            // 1. Chyba 400 (Zlé heslo)
+            if (error.status === 400) {
+                // Nerobíme nič, necháme to na komponent
+                console.log('➡️ Posúvam 400 do komponentu');
+            }
+            // 2. Ostatné chyby (Server, Sieť)
+            else if (error.status >= 500) {
+                notify.showError('Chyba servera.');
+            }
+            else if (error.status === 0) {
+                notify.showError('Nepodarilo sa spojiť so serverom.');
+            }
+
+            // ⚠️ TOTO JE NAJDÔLEŽITEJŠÍ RIADOK ⚠️
+            // Musíme chybu "hodiť" ďalej, inak sa error() v komponente nespustí!
+            return throwError(() => error);
+        })
+    );
+};
+</file>
+
+<file path="src/app/core/services/auth.service.ts">
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { Observable, of } from 'rxjs'; // 👈 Pridaj 'of' do importu
+import { switchMap, tap } from 'rxjs/operators';
+import { environment } from '../../../environments/environment';
+import { CurrentUser, User } from '../../shared/models/user.model';
+
+export interface AuthResponse {
+    token: string;
+}
+
+@Injectable({
+    providedIn: 'root'
+})
+export class AuthService {
+    private apiUrl = environment.apiUrl;
+    private http = inject(HttpClient);
+    private router = inject(Router);
+
+    login(credentials: { username: string, password: string }): Observable<CurrentUser> {
+        return this.http.post<any>(`${this.apiUrl}api-token-auth/`, credentials)
+            .pipe(
+                tap(response => {
+                    sessionStorage.setItem('token', response.token);
+                }),
+                switchMap(() => {
+                    return this.http.get<CurrentUser>(`${this.apiUrl}current-user/`);
+                }),
+                tap(user => {
+                    sessionStorage.setItem('username', user.username);
+                    sessionStorage.setItem('first_name', user.first_name || '');
+                    sessionStorage.setItem('last_name', user.last_name || '');
+                    sessionStorage.setItem('user_id', user.id.toString());
+                    sessionStorage.setItem('role', user.role); // Predpokladáme, že backend vracia 'admin', 'manager', 'worker'
+                })
+            );
+    }
+
+    getRole(): string {
+        return sessionStorage.getItem('role') || 'worker';
+    }
+
+    logout(): void {
+        sessionStorage.clear();
+        this.router.navigate(['/login']);
+    }
+
+    isAdmin(): boolean {
+        return this.getRole() === 'admin';
+    }
+
+    // Manažér alebo Admin majú rozšírené práva
+    isManager(): boolean {
+        const role = this.getRole();
+        return role === 'manager' || role === 'admin';
+    }
+
+    // Má prístup do plánovača? (Aj worker má prístup, ale obmedzený)
+    hasPlannerAccess(): boolean {
+        // Všetci prihlásení majú prístup, ale uvidia iné dáta
+        return this.isAuthenticated();
+    }
+
+    getFullName(): string {
+        const firstName = sessionStorage.getItem('first_name');
+        const lastName = sessionStorage.getItem('last_name');
+        const username = sessionStorage.getItem('username');
+
+        if (firstName || lastName) {
+            return `${firstName || ''} ${lastName || ''}`.trim();
+        }
+        return username || 'Neznámy používateľ';
+    }
+
+    isAuthenticated(): boolean {
+        return !!sessionStorage.getItem('token');
+    }
+
+    getActiveUsers(): Observable<User[]> {
+        return this.http.get<User[]>(`${this.apiUrl}active-users/`);
+    }
+
+    // ✅ NOVÁ METÓDA: Vráti aktuálneho používateľa ako pole (pre Worker pohľad)
+    getCurrentUserAsList(): Observable<User[]> {
+        const user: User = {
+            id: Number(sessionStorage.getItem('user_id')),
+            username: sessionStorage.getItem('username') || '',
+            first_name: sessionStorage.getItem('first_name') || '',
+            last_name: sessionStorage.getItem('last_name') || '',
+
+            role: this.getRole() as any // Pretypovanie ak treba
+            ,
+            personal_number: ''
+        };
+        return of([user]);
+    }
+}
+</file>
+
+<file path="src/app/core/services/employee.service.ts">
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+import { User } from '../../shared/models/user.model';
+import { EmployeePayload } from '../../shared/models/employee.model';
+
+
+
+@Injectable({
+    providedIn: 'root'
+})
+export class EmployeeService {
+    private apiUrl = `${environment.apiUrl}employees/`;
+    private http = inject(HttpClient);
+
+    getEmployees(): Observable<EmployeePayload[]> {
+        return this.http.get<EmployeePayload[]>(this.apiUrl);
+    }
+
+    getEmployee(id: number): Observable<EmployeePayload> {
+        return this.http.get<EmployeePayload>(`${this.apiUrl}${id}/`);
+    }
+
+    createEmployee(employee: EmployeePayload): Observable<EmployeePayload> {
+        return this.http.post<EmployeePayload>(this.apiUrl, employee);
+    }
+
+    updateEmployee(id: number, employee: Partial<EmployeePayload>): Observable<EmployeePayload> {
+        return this.http.patch<EmployeePayload>(`${this.apiUrl}${id}/`, employee);
+    }
+
+    deleteEmployee(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}${id}/`);
+    }
+}
+</file>
+
+<file path="src/app/core/services/changeReason.service.ts">
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+import { ChangeReason } from '../../shared/models/changeReason.model';
+
+@Injectable({
+    providedIn: 'root'
+})
+export class ChangeReasonService {
+    private http = inject(HttpClient);
+    private apiUrl = `${environment.apiUrl}changereason/`;
+
+    getReasons(): Observable<ChangeReason[]> {
+        return this.http.get<ChangeReason[]>(this.apiUrl);
+    }
+}
+</file>
+
+<file path="src/app/core/services/notification.service.ts">
+import { Injectable } from '@angular/core';
+import { Subject } from 'rxjs';
+
+export interface Notification {
+    message: string;
+    type: 'success' | 'error' | 'info';
+}
+
+@Injectable({
+    providedIn: 'root'
+})
+export class NotificationService {
+    // Subject je ako "vysielač". Komponenty ho budú počúvať.
+    private notificationSubject = new Subject<Notification | null>();
+
+    // Toto budeme odoberať v komponente
+    notification$ = this.notificationSubject.asObservable();
+
+    showSuccess(message: string) {
+        this.notificationSubject.next({ message, type: 'success' });
+    }
+
+    showError(message: string) {
+        this.notificationSubject.next({ message, type: 'error' });
+    }
+
+    showInfo(message: string) {
+        this.notificationSubject.next({ message, type: 'info' });
+    }
+
+    clear() {
+        this.notificationSubject.next(null);
+    }
+}
+</file>
+
+<file path="src/app/core/services/plannedShift.service.ts">
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+import { MonthlySummary, PlannedShift } from '../../shared/models/plannedShift.model';
+
+
+
+@Injectable({
+    providedIn: 'root'
+})
+export class PlannerService {
+    // Django router má adresu: /plannedshift/
+    private apiUrl = `${environment.apiUrl}plannedshift/`;
+    private http = inject(HttpClient);
+
+
+    getShifts(year: number, month: number): Observable<PlannedShift[]> {
+        const params = new HttpParams()
+            .set('year', year.toString())
+            .set('month', month.toString())
+            .set('hidden', 'false'); // Chceme len tie, čo nie sú zmazané
+
+        return this.http.get<PlannedShift[]>(this.apiUrl, { params });
+    }
+
+    /**
+     * Vytvorí novú zmenu.
+     * Pozor: Backend kontroluje prekrývanie (overlap) a vráti 400 ak je konflikt.
+     */
+    createShift(shift: PlannedShift): Observable<PlannedShift> {
+        return this.http.post<PlannedShift>(this.apiUrl, shift);
+    }
+
+    /**
+     * Upraví existujúcu zmenu.
+     * Používame PATCH, lebo meníme len časť dát.
+     */
+    updateShift(id: number, shift: Partial<PlannedShift>): Observable<PlannedShift> {
+        return this.http.patch<PlannedShift>(`${this.apiUrl}${id}/`, shift);
+    }
+
+    /**
+     * Vymaže zmenu.
+     * Backend má pole 'hidden', ale DELETE endpoint zvyčajne robí hard-delete
+     * alebo backend sám nastaví hidden=True. Skúsime klasický delete.
+     */
+    deleteShift(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}${id}/`);
+    }
+
+    getPreviousMonthBalance(year: number, month: number): Observable<MonthlySummary[]> {
+        // Toto je len príklad, ideálne by to mal vrátiť backend
+        // Ak nemáš hromadný endpoint, musíme to zatiaľ nechať prázdne alebo volať pre každého usera
+        return this.http.get<MonthlySummary[]>(`${this.apiUrl}balances/`, {
+            params: { year: year.toString(), month: month.toString() }
+        });
+    }
+    getWorkingFund(year: number, month: number): Observable<any> {
+        // Endpoint definovaný v urls.py: working_fund/<int:year>/<int:month>/
+        return this.http.get<any>(`${environment.apiUrl}working_fund/${year}/${month}/`);
+    }
+
+    getBalances(year: number, month: number): Observable<{ [key: number]: number }> {
+        return this.http.get<{ [key: number]: number }>(`${environment.apiUrl}balances/${year}/${month}/`);
+    }
+}
+</file>
+
+<file path="src/app/core/services/tapeShift.service.ts">
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+import { TypeShift } from '../../shared/models/typeShift.model';
+
+
+
+@Injectable({
+    providedIn: 'root'
+})
+
+
+export class TypeShiftService {
+
+    private http = inject(HttpClient);
+
+    private apiUrl = environment.apiUrl;
+    getShiftTypes(): Observable<TypeShift[]> {
+        return this.http.get<TypeShift[]>(`${environment.apiUrl}typeshift/`);
+        // Uisti sa, že máš tento endpoint v Django urls.py
+    }
+}
+</file>
+
+<file path="src/app/features/auth/login/login.html">
+<div class="login-wrapper">
+    <div class="login-card">
+      
+      <div class="card-header">
+        <h1>WorkTrack</h1>
+        <p>Vitajte späť! Prosím, prihláste sa.</p>
+      </div>
+
+      <div class="form-content">
+        
+        <div class="form-group">
+          <label for="username">Prihlasovacie meno</label>
+          <div class="input-container">
+            <input 
+              id="username"
+              [(ngModel)]="username" 
+              (keyup.enter)="onLogin()"
+              type="text" 
+              placeholder="napr. janko.mrkvicka"
+              [class.error-border]="errorMessage"
+            >
+            <span class="icon">👤</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Heslo</label>
+          <div class="input-container">
+            <input 
+              id="password"
+              [(ngModel)]="password" 
+              (keyup.enter)="onLogin()"
+              type="password" 
+              placeholder="••••••••"
+              [class.error-border]="errorMessage"
+            >
+            <span class="icon">🔒</span>
+          </div>
+        </div>
+
+        <button (click)="onLogin()" [disabled]="isLoading" class="login-btn">
+          <span *ngIf="!isLoading">Prihlásiť sa</span>
+          <span *ngIf="isLoading" class="loader"></span>
+        </button>
+
+        <p class="error-text" *ngIf="errorMessage">
+          {{ errorMessage }}
+        </p>
+
+      </div>
+      
+      <div class="card-footer">
+        <small>© 2026 WorkTrack System</small>
+      </div>
+
+    </div>
+  </div>
+</file>
+
+<file path="src/app/features/auth/login/login.scss">
+/* 1. Celkové pozadie stránky */
+.login-wrapper {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* Moderný gradient (Modrá -> Fialová) */
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* 2. Karta prihlásenia */
+.login-card {
+    background: white;
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05), 0 5px 10px rgba(0, 0, 0, 0.03);
+    transition: transform 0.3s ease;
+}
+
+/* 3. Typografia */
+.card-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.card-header h1 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.card-header p {
+    margin: 10px 0 0;
+    color: #7f8c8d;
+    font-size: 0.95rem;
+}
+
+/* 4. Inputy a Label */
+.form-group {
+    margin-bottom: 1.2rem;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    color: #34495e;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.input-container {
+    position: relative;
+}
+
+input {
+    width: 100%;
+    padding: 12px 40px 12px 15px;
+    /* Priestor pre ikonu vpravo */
+    border: 2px solid #eef2f7;
+    background-color: #f8fafc;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+    /* Dôležité aby padding nerozbil šírku */
+    color: #2c3e50;
+}
+
+input::placeholder {
+    color: #bdc3c7;
+}
+
+/* Efekt po kliknutí do inputu */
+input:focus {
+    outline: none;
+    border-color: #3498db;
+    background-color: white;
+    box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
+}
+
+/* Chyba v inpute */
+input.error-border {
+    border-color: #e74c3c;
+    background-color: #fdf2f2;
+}
+
+input.error-border:focus {
+    box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.1);
+}
+
+.icon {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.1rem;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* 5. Tlačidlo */
+.login-btn {
+    width: 100%;
+    padding: 14px;
+    margin-top: 10px;
+    background: linear-gradient(to right, #2980b9, #3498db);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+}
+
+.login-btn:active {
+    transform: translateY(0);
+}
+
+.login-btn:disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 6. Chybová hláška text */
+.error-text {
+    color: #e74c3c;
+    font-size: 0.85rem;
+    text-align: center;
+    margin-top: 1rem;
+    background: #fdf2f2;
+    padding: 8px;
+    border-radius: 6px;
+    animation: fadeIn 0.3s ease;
+}
+
+/* 7. Pätička */
+.card-footer {
+    text-align: center;
+    margin-top: 2rem;
+    color: #bdc3c7;
+}
+
+/* Animácie */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Jednoduchý loader krúžok */
+.loader {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Mobilné zobrazenie */
+@media (max-width: 480px) {
+    .login-card {
+        padding: 1.5rem;
+        margin: 20px;
+    }
+
+    .card-header h1 {
+        font-size: 1.5rem;
+    }
+}
+</file>
+
+<file path="src/app/features/auth/login/login.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Login } from './login';
+
+describe('Login', () => {
+  let component: Login;
+  let fixture: ComponentFixture<Login>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Login]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(Login);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/features/auth/login/login.ts">
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../../../core/services/auth.service'; // Importuj tvoju novú service
+import { NotificationService } from '../../../core/services/notification.service';
+import { HttpErrorResponse } from '@angular/common/http';
+@Component({
+  selector: 'app-login',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  templateUrl: './login.html',
+  styleUrls: ['./login.scss']
+})
+export class LoginComponent {
+  username = '';
+  password = '';
+  errorMessage = '';
+  isLoading = false;
+  // Injektujeme Service a Router
+  private authService = inject(AuthService);
+  private router = inject(Router);
+  private notify = inject(NotificationService);
+
+  onLogin() {
+    this.isLoading = true;
+
+    this.authService.login({ username: this.username, password: this.password })
+      .subscribe({
+        next: () => {
+          this.notify.showSuccess('Prihlásenie úspešné');
+          this.router.navigate(['/dashboard']);
+        },
+        error: (err: HttpErrorResponse) => {
+          this.isLoading = false;
+
+          // DEBUG: Pozri sa do konzoly (F12), či sa toto vypíše
+          console.log('❌ Komponent prijal chybu:', err.status);
+
+          if (err.status === 400) {
+            // Tu voláme notifikáciu
+            this.notify.showError('Nesprávne meno alebo heslo.');
+          }
+        }
+      });
+  }
+}
+</file>
+
+<file path="src/app/features/employees/employee-list/employee-list.html">
+<app-header></app-header>
+<div class="employees-container">
+  
+    <div class="header-actions">
+      <h1>Zoznam zamestnancov</h1>
+      <button *ngIf="isManager" class="btn btn-primary" (click)="openCreateModal()">
+        + Pridať zamestnanca
+      </button>
+    </div>
+  
+    <div class="table-card">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            <th>Os. číslo</th>
+            <th>Meno</th>
+            <th>Priezvisko</th>
+            <th>Rola</th>
+            <th>Email</th>
+            
+            <th *ngIf="isManager">Prenesené h.</th>
+            <th *ngIf="isManager">Aktívny</th>
+            
+            <th *ngIf="isManager" class="actions-col">Akcie</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngIf="isLoading">
+            <td colspan="8" class="text-center">Načítavam...</td>
+          </tr>
+          <tr *ngFor="let emp of employees" [class.inactive-row]="!emp.is_active">
+            <td><span class="badge-number">{{ emp.personal_number }}</span></td>
+            <td class="bold">{{ emp.first_name }}</td>
+            <td class="bold">{{ emp.last_name }}</td>
+            <td>
+              <span class="role-badge" [ngClass]="emp.role">{{ emp.role }}</span>
+            </td>
+            <td>{{ emp.email || '-' }}</td>
+            
+            <td *ngIf="isManager">{{ emp.initial_hours_balance }}</td>
+            <td *ngIf="isManager">
+              <span *ngIf="emp.is_active" class="status-active">✅ Áno</span>
+              <span *ngIf="!emp.is_active" class="status-inactive">❌ Nie</span>
+            </td>
+  
+            <td *ngIf="isManager" class="actions-col">
+              <button class="icon-btn edit" (click)="openEditModal(emp)" title="Upraviť">✏️</button>
+              <button class="icon-btn delete" (click)="deleteEmployee(emp.id!)" title="Zmazať">🗑️</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  
+    <div class="modal-overlay" *ngIf="isModalOpen" (click)="closeModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>{{ isEditMode ? 'Upraviť zamestnanca' : 'Nový zamestnanec' }}</h3>
+          <button class="close-btn" (click)="closeModal()">✖</button>
+        </div>
+        
+        <div class="modal-body form-grid">
+          
+          <div class="form-group">
+              <label>Prihlasovacie meno *</label>
+              <input [(ngModel)]="selectedEmployee.username" type="text" [disabled]="isEditMode">
+          </div>
+  
+          <div class="form-group" *ngIf="!isEditMode">
+              <label>Heslo *</label>
+              <input [(ngModel)]="selectedEmployee.password" type="password">
+          </div>
+    
+          <div class="form-group">
+              <label>Osobné číslo *</label>
+              <input [(ngModel)]="selectedEmployee.personal_number" type="text" maxlength="3">
+          </div>
+    
+          <div class="form-group">
+              <label>Meno</label>
+              <input [(ngModel)]="selectedEmployee.first_name" type="text">
+          </div>
+    
+          <div class="form-group">
+              <label>Priezvisko</label>
+              <input [(ngModel)]="selectedEmployee.last_name" type="text">
+          </div>
+    
+          <div class="form-group">
+              <label>Email</label>
+              <input [(ngModel)]="selectedEmployee.email" type="email">
+          </div>
+  
+          <div class="form-group">
+            <label>Rola</label>
+            <select [(ngModel)]="selectedEmployee.role">
+              <option value="worker">Zamestnanec</option>
+              <option value="manager">Manažér</option>
+              <option value="admin">Administrátor</option>
+            </select>
+          </div>
+  
+          <div class="form-group">
+            <label>Prenesené hodiny</label>
+            <input [(ngModel)]="selectedEmployee.initial_hours_balance" type="number" step="0.5">
+          </div>
+  
+          <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" [(ngModel)]="selectedEmployee.is_active">
+                Aktívny účet
+              </label>
+              <small class="hint">Ak vypnete, zamestnanec sa nebude môcť prihlásiť.</small>
+          </div>
+  
+        </div>
+  
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeModal()">Zrušiť</button>
+          <button class="btn btn-primary" (click)="saveEmployee()">Uložiť</button>
+        </div>
+      </div>
+    </div>
+  
+  </div>
+</file>
+
+<file path="src/app/features/employees/employee-list/employee-list.scss">
+.employees-container {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  .header-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  
+    h1 {
+      font-size: 1.5rem;
+      color: #1e293b;
+      margin: 0;
+    }
+  }
+  
+  .table-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  
+  .styled-table {
+    width: 100%;
+    border-collapse: collapse;
+  
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }
+  
+    th {
+      background-color: #f8fafc;
+      font-weight: 600;
+      color: #475569;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+    }
+  
+    tr:last-child td {
+      border-bottom: none;
+    }
+  
+    tr:hover {
+      background-color: #f1f5f9;
+    }
+  }
+  
+  .bold { font-weight: 600; color: #334155; }
+  
+  .badge-number {
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-weight: bold;
+  }
+  
+  .role-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  
+    &.admin { background: #fee2e2; color: #991b1b; }
+    &.manager { background: #fef3c7; color: #92400e; }
+    &.worker { background: #dcfce7; color: #166534; }
+  }
+  
+  .actions-col {
+    text-align: right;
+    white-space: nowrap;
+  }
+  
+  .icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    transition: transform 0.2s;
+  
+    &:hover { transform: scale(1.2); }
+    &.delete:hover { filter: drop-shadow(0 0 2px red); }
+  }
+  
+  /* Tlačidlá */
+  .btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-primary { background: #3b82f6; color: white; &:hover { background: #2563eb; } }
+  .btn-secondary { background: #e2e8f0; color: #475569; &:hover { background: #cbd5e1; } }
+  
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .modal-content {
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+  }
+  
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    h3 { margin: 0; }
+  }
+  
+  .close-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; }
+  
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    
+    label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #475569; }
+    input, select {
+      padding: 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+  }
+  
+  .modal-footer {
+    margin-top: 24px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+</file>
+
+<file path="src/app/features/employees/employee-list/employee-list.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { EmployeeList } from './employee-list';
+
+describe('EmployeeList', () => {
+  let component: EmployeeList;
+  let fixture: ComponentFixture<EmployeeList>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [EmployeeList]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(EmployeeList);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/features/employees/employee-list/employee-list.ts">
+import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { EmployeeService } from '../../../core/services/employee.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { EmployeePayload } from '../../../shared/models/employee.model';
+import { HeaderComponent } from '../../../core/components/header/header';
+
+@Component({
+  selector: 'app-employee-list',
+  standalone: true,
+  imports: [CommonModule, FormsModule, HeaderComponent],
+  templateUrl: './employee-list.html',
+  styleUrls: ['./employee-list.scss']
+})
+export class EmployeeListComponent implements OnInit {
+  employees: EmployeePayload[] = [];
+  isLoading = false;
+  isManager = false;
+
+
+  isModalOpen = false;
+  selectedEmployee: Partial<EmployeePayload> = {};
+  isEditMode = false;
+
+  private employeeService = inject(EmployeeService);
+  private notify = inject(NotificationService);
+  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+  ngOnInit() {
+    this.isManager = this.authService.isManager();
+    this.loadEmployees();
+  }
+
+  loadEmployees() {
+    this.isLoading = true;
+    this.employeeService.getEmployees().subscribe({
+      next: (data) => {
+        this.employees = data;
+        this.isLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.notify.showError('Nepodarilo sa načítať zamestnancov.');
+        this.isLoading = false;
+        this.cdr.detectChanges()
+      }
+    });
+  }
+
+  openCreateModal() {
+    this.selectedEmployee = {
+      role: 'worker',
+      initial_hours_balance: 0,
+      is_active: true
+    };
+    this.isEditMode = false;
+    this.isModalOpen = true;
+  }
+
+  openEditModal(employee: EmployeePayload) {
+
+    this.selectedEmployee = { ...employee };
+    this.isEditMode = true;
+    this.isModalOpen = true;
+  }
+
+  closeModal() {
+    this.isModalOpen = false;
+    this.selectedEmployee = {};
+  }
+
+
+  saveEmployee() {
+    if (!this.selectedEmployee.username || !this.selectedEmployee.personal_number) {
+      this.notify.showError('Vyplňte povinné polia (Meno, Osobné číslo).');
+      return;
+    }
+
+    const payload = this.selectedEmployee as EmployeePayload;
+
+    if (this.isEditMode && payload.id) {
+      this.employeeService.updateEmployee(payload.id, payload).subscribe({
+        next: () => {
+          this.notify.showSuccess('Zamestnanec aktualizovaný.');
+
+
+          setTimeout(() => {
+            this.closeModal();
+            this.loadEmployees();
+          }, 0);
+        },
+        error: () => this.notify.showError('Chyba pri aktualizácii.')
+      });
+    } else {
+      if (!payload.password) {
+        this.notify.showError('Pri novom zamestnancovi je heslo povinné.');
+        return;
+      }
+      this.employeeService.createEmployee(payload).subscribe({
+        next: () => {
+          this.notify.showSuccess('Zamestnanec vytvorený.');
+
+
+          setTimeout(() => {
+            this.closeModal();
+            this.loadEmployees();
+          }, 0);
+        },
+        error: (err) => {
+          console.error(err);
+          this.notify.showError('Chyba pri vytváraní.');
+        }
+      });
+    }
+  }
+
+  deleteEmployee(id: number) {
+    if (confirm('Naozaj chcete zmazať tohto zamestnanca?')) {
+      this.employeeService.deleteEmployee(id).subscribe({
+        next: () => {
+          this.notify.showInfo('Zamestnanec bol odstránený.');
+
+
+          setTimeout(() => {
+            this.loadEmployees();
+          }, 0);
+        },
+        error: () => this.notify.showError('Nemáte oprávnenie alebo nastala chyba.')
+      });
+    }
+  }
+}
+</file>
+
+<file path="src/app/features/planner/planner.html">
+<app-header></app-header>
+
+<div class="planner-container">
+  
+  <div class="planner-header">
+    <div class="month-controls">
+      <button class="nav-btn" (click)="changeMonth(-1)" title="Predchádzajúci mesiac">
+        ◀
+      </button>
+      
+      <div class="date-display">
+        <h2>{{ currentDate | date:'MMMM yyyy':'':'sk' }}</h2>
+        <span class="fund-badge">Fond: {{ monthlyFund | number:'1.1-1' }} hod.</span>
+      </div>
+
+      <button class="nav-btn" (click)="changeMonth(1)" title="Nasledujúci mesiac">
+        ▶
+      </button>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" (click)="togglePrevMonthPreview()">
+        {{ showPrevMonthPreview ? 'Skryť min. mesiac' : '👁️ Minulý mesiac' }}
+      </button>
+
+      <button class="btn btn-primary" (click)="savePlan()">
+        💾 Uložiť plán
+      </button>
+    </div>
+  </div>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-left col-name">Zamestnanec</th>
+          
+          <th *ngFor="let day of daysInMonth" 
+              class="col-day"
+              [class.weekend-header]="day.isWeekend && !day.isHoliday"
+              [class.holiday-header]="day.isHoliday"> 
+              
+              <div class="day-num">{{ day.dayNum }}.</div>
+              <div class="day-name">{{ day.dayName }}</div>
+          </th>
+
+          <th class="stat-header col-transfer">Pren.</th>
+          <th class="stat-header col-fond">Fond</th>
+          <th class="stat-header col-worked">Odpr.</th>
+          <th class="stat-header col-diff">Rozdiel</th>
+          <th class="stat-header col-total">Spolu</th>
+          
+          <th class="stat-header small">SK</th>
+          <th class="stat-header small">SN</th>
+          <th class="stat-header small">NS</th> 
+        </tr>
+      </thead>
+      
+      <tbody>
+        <tr *ngIf="isLoading">
+          <td [attr.colspan]="daysInMonth.length + 8" class="loading-cell">
+            <div class="spinner"></div> Načítavam dáta...
+          </td>
+        </tr>
+
+        <tr *ngFor="let row of employeeRows">
+          
+          <td class="sticky-left row-header">
+            <div class="user-name">{{ row.fullName }}</div>
+          </td>
+
+          <td *ngFor="let day of daysInMonth" 
+              class="cell-shift"
+              [class.weekend-cell]="day.isWeekend && !day.isHoliday"
+              [class.holiday-cell]="day.isHoliday"  (click)="openShiftEdit(row, day)">
+            
+            <ng-container *ngIf="row.shifts[day.dayNum] as shift">
+              <div class="shift-badge" 
+                   [ngClass]="shift.short_name || 'default'"
+                   [class.is-changed]="shift.is_changed"
+                   [class.is-transferred]="shift.transferred" 
+                   [title]="(shift.shift_name || 'Smena') + (shift.transferred ? ' (V dochádzke)' : '')">
+                {{ shift.short_name || 'S' }}
+              </div>
+            </ng-container>
+            
+            <span *ngIf="!row.shifts[day.dayNum]" class="empty-placeholder"></span>
+          </td>
+
+          <td class="stat-cell text-muted bg-light">
+            {{ row.stats.prevBalance | number:'1.1-1' }}
+          </td>
+          <td class="stat-cell text-muted">{{ row.stats.fund | number:'1.1-1' }}</td>
+          <td class="stat-cell bold">{{ row.stats.worked | number:'1.1-1' }}</td>
+          
+          <td class="stat-cell" 
+              [class.text-red]="row.stats.diff < 0" 
+              [class.text-green]="row.stats.diff > 0">
+            {{ row.stats.diff > 0 ? '+' : '' }}{{ row.stats.diff | number:'1.1-1' }}
+          </td>
+          
+          <td class="stat-cell bg-highlight bold">{{ row.stats.total | number:'1.1-1' }}</td>
+
+          <td class="stat-cell small text-muted">{{ row.stats.holiday | number:'1.0-1' }}</td>
+          <td class="stat-cell small text-muted">{{ row.stats.weekend | number:'1.0-1' }}</td>
+          <td class="stat-cell small text-muted">{{ row.stats.night | number:'1.0-1' }}</td>
+
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="isModalOpen" (click)="closeModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    
+    <div class="modal-header">
+      <h3>Plánovanie smeny</h3>
+      <button class="close-btn" (click)="closeModal()">✖</button>
+    </div>
+
+    <div class="modal-body">
+      
+      <p class="modal-info">
+        <strong>{{ selectedRowUser?.fullName }}</strong> <br>
+        {{ selectedDay?.date | date:'dd.MM.yyyy (EEEE)':'':'sk' }}
+      </p>
+
+      <div class="form-group">
+        <label>Typ smeny</label>
+        <select [(ngModel)]="selectedShift.type_shift" (change)="onShiftTypeChange()">
+          <option [ngValue]="null">-- Vyberte smenu --</option>
+          <option *ngFor="let type of shiftTypes" [ngValue]="type.id">
+            {{ type.nameShift }} ({{ type.shortName }})
+          </option>
+        </select>
+      </div>
+
+      <div class="time-editor-wrapper">
+  
+        <div class="time-inputs-row">
+          
+          <div class="time-group">
+            <label>Začiatok</label>
+            <div class="split-time-inputs">
+              <select [(ngModel)]="tempStartH" 
+                      (change)="updateTimeFromSelects(true)" 
+                      [disabled]="!canEditTime">
+                <option value="" disabled>--</option>
+                <option *ngFor="let h of hoursList" [value]="h">{{ h }}</option>
+              </select>
+              
+              <span class="colon">:</span>
+              
+              <select [(ngModel)]="tempStartM" 
+                      (change)="updateTimeFromSelects(true)" 
+                      [disabled]="!canEditTime">
+                <option value="" disabled>--</option>
+                <option *ngFor="let m of minutesList" [value]="m">{{ m }}</option>
+              </select>
+            </div>
+          </div>
+      
+          <div class="time-arrow">➝</div>
+      
+          <div class="time-group">
+            <label>Koniec</label>
+            <div class="split-time-inputs">
+              <select [(ngModel)]="tempEndH" 
+                      (change)="updateTimeFromSelects(false)" 
+                      [disabled]="!canEditTime">
+                <option value="" disabled>--</option>
+                <option *ngFor="let h of hoursList" [value]="h">{{ h }}</option>
+              </select>
+              
+              <span class="colon">:</span>
+              
+              <select [(ngModel)]="tempEndM" 
+                      (change)="updateTimeFromSelects(false)" 
+                      [disabled]="!canEditTime">
+                <option value="" disabled>--</option>
+                <option *ngFor="let m of minutesList" [value]="m">{{ m }}</option>
+              </select>
+            </div>
+      
+            <small class="next-day-label" *ngIf="isNextDay()">+1 deň</small>
+          </div>
+      
+        </div>
+      
+        <div class="duration-badge" *ngIf="selectedShift.custom_start && selectedShift.custom_end">
+          ⏱️ Trvanie: <strong>{{ computedDuration }}</strong>
+        </div>
+      
+        <div class="quick-presets" *ngIf="canEditTime">
+          <div class="chips">
+            <button class="chip" (click)="setPresetTime('06:00', '14:00')">06:00 - 14:00</button>
+            <button class="chip" (click)="setPresetTime('06:00', '18:00')">06:00 - 18:00</button>
+            <button class="chip" (click)="setPresetTime('14:00', '22:00')">14:00 - 22:00</button>
+            <button class="chip" (click)="setPresetTime('22:00', '06:00')">22:00 - 06:00</button>
+          </div>
+        </div>
+      
+      </div>
+      <div class="form-group">
+        <label>Dôvod zmeny / Absencie</label>
+        <select [(ngModel)]="selectedShift.change_reason">
+          <option [ngValue]="null">-- Žiadny dôvod --</option>
+          <option *ngFor="let reason of changeReasons" [ngValue]="reason.id">
+            {{ reason.name }} ({{ reason.category }})
+          </option>
+        </select>
+      </div>
+
+      <div class="status-flags">
+        <label class="checkbox-label" title="Smena už bola preklopená do dochádzky">
+          <input type="checkbox" [(ngModel)]="selectedShift.transferred">
+          <span>V dochádzke (Transferred)</span>
+        </label>
+
+        <label class="checkbox-label" title="Smena sa líši od predvoleného plánu">
+          <input type="checkbox" [(ngModel)]="selectedShift.is_changed">
+          <span>Zmenená (Is Changed)</span>
+        </label>
+
+        <label class="checkbox-label text-danger" title="Soft delete - smena sa nebude rátať">
+          <input type="checkbox" [(ngModel)]="selectedShift.hidden">
+          <span>Skrytá / Zmazaná (Hidden)</span>
+        </label>
+      </div>
+
+      <div class="debug-info" *ngIf="selectedShift.id">
+        <small class="text-muted">
+          ID: {{ selectedShift.id }} | 
+          CalendarDay ID: {{ selectedShift.calendar_day || 'N/A' }}
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label>Poznámka</label>
+        <textarea [(ngModel)]="selectedShift.note" rows="2"></textarea>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button *ngIf="selectedShift.id" class="btn btn-danger" (click)="deleteShift()">
+        Vymazať 🗑️
+      </button>
+      
+      <div class="right-buttons">
+        <button class="btn btn-secondary" (click)="closeModal()">Zrušiť</button>
+        <button class="btn btn-primary" (click)="saveShift()">Uložiť ✅</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</file>
+
+<file path="src/app/features/planner/planner.scss">
+.planner-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 60px);
+  /* Prispôsobte podľa výšky vašej hornej lišty (headeru) */
+  width: 100%;
+  max-width: 100vw;
+  /* Zabezpečí, že kontajner nepresiahne šírku obrazovky */
+  overflow: hidden;
+  /* Skryje scrollovnie celého okna, budeme scrollovať len tabuľku */
+  background-color: #f8fafc;
+  margin-right: 22px;
+}
+
+
+
+.planner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+
+  .month-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    .nav-btn {
+      background: none;
+      border: 1px solid #cbd5e1;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+
+      &:hover {
+        background-color: #f1f5f9;
+        border-color: #94a3b8;
+      }
+    }
+
+    .date-display {
+      text-align: center;
+
+      h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        color: #1e293b;
+        text-transform: capitalize;
+      }
+
+      .fund-badge {
+        display: inline-block;
+        background-color: #e0f2fe;
+        color: #0369a1;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin-top: 4px;
+        margin-right: 5px;
+      }
+    }
+  }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+  }
+}
+
+/* =========================================
+     2. TABUĽKA (Grid)
+     ========================================= */
+.table-wrapper {
+  flex: 1;
+  overflow: auto;
+  /* Zapne rolovacie lišty (vodorovné aj zvislé) */
+  position: relative;
+  width: 100%;
+
+
+  /* Voliteľné: Zmenšenie buniek, aby sa zmestilo viac na obrazovku */
+  table {
+    .col-transfer {
+      background-color: #f8fafc;
+      /* Jemne odlíšené pozadie */
+      color: #475569;
+      min-width: 35px;
+    }
+
+    .bg-light {
+      background-color: #f8fafc;
+    }
+
+    /* Ak chcete, aby bol 'Spolu' (Total) výraznejší, keďže je to výsledok (Pren + Rozdiel) */
+    .col-total,
+    .bg-highlight {
+      background-color: #fff7ed !important;
+      /* Jemne oranžová pre finálny výsledok */
+      border-left: 1px solid #cbd5e1;
+      /* Oddelenie finálneho výsledku */
+    }
+
+    th,
+    td {
+      min-width: 32px;
+      height: 32px;
+      padding: 4px;
+      font-size: 0.8rem;
+
+      /* 👇👇👇 DOPLŇTE TIETO DVA RIADKY PRE ORÁMOVANIE 👇👇👇 */
+      border-bottom: 1px solid #94a3b8;
+      /* Čiara dole (tmavšia sivá) */
+      border-right: 1px solid #94a3b8;
+      /* Čiara vpravo (tmavšia sivá) */
+      /* 👆👆👆 */
+    }
+
+    /* Meno zamestnanca ostane širšie */
+    .sticky-left {
+      min-width: 160px;
+      max-width: 160px;
+    }
+  }
+}
+
+
+
+
+
+
+/* Rôzne typy buniek */
+.weekend-header,
+.weekend-cell {
+  background-color: #f8fafc;
+  /* Jemne šedá pre víkend */
+}
+
+.day-num {
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.day-name {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.user-name {
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-shift {
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    /* Keď prejdete myšou, bunka sa ešte viac zvýrazní */
+    filter: brightness(0.95);
+    outline: 2px solid #3b82f6;
+    /* Modrý rámik okolo vybranej bunky */
+    z-index: 5;
+    /* Aby bol rámik navrchu */
+  }
+}
+
+/* Badges pre smeny */
+.shift-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  color: white;
+  background-color: #64748b;
+
+  /* Farby podľa typu smeny */
+  &.R {
+    background-color: #3b82f6;
+  }
+
+  /* Ranná - Modrá */
+  &.O {
+    background-color: #f59e0b;
+  }
+
+  /* Odpoludnia - Oranžová */
+  &.N,
+  &.Ns {
+    background-color: #1e293b;
+  }
+
+  /* Nočná - Tmavá */
+  &.D {
+    background-color: #10b981;
+  }
+
+  /* Dovolenka - Zelená */
+  &.PN {
+    background-color: #ef4444;
+  }
+
+  /* PN - Červená */
+  &.default {
+    background-color: #94a3b8;
+  }
+
+  &.is-changed {
+    /* 1. Ostrý červený rámik */
+    border: 2px solid #ff0000 !important;
+
+    /* 2. Umožníme, aby červená gulička trčala von z rámčeka */
+    position: relative;
+    overflow: visible;
+
+    /* 3. Animácia pulzovania */
+    animation: aggressive-pulse 1.5s infinite ease-in-out;
+    z-index: 5;
+    /* Aby bola nad ostatnými */
+
+    /* 4. Červený výkričník v rohu (Pseudoprvok) */
+    &::after {
+      content: '!';
+      position: absolute;
+      top: -10px;
+      /* Posun hore mimo bunku */
+      right: -10px;
+      /* Posun doprava mimo bunku */
+
+      width: 18px;
+      height: 18px;
+      background-color: #ff0000;
+      color: white;
+
+      border-radius: 50%;
+      border: 2px solid white;
+      /* Biely obrys aby to bolo čitateľné */
+
+      font-size: 12px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      z-index: 10;
+    }
+  }
+
+  &.is-transferred {
+    /* 1. Zelený rámik */
+    border-color: #16a34a !important;
+    /* Sýta zelená */
+    box-shadow: 0 0 4px rgba(22, 163, 74, 0.5);
+    /* Jemná zelená žiara */
+
+    position: relative;
+    overflow: visible;
+    z-index: 4;
+
+    /* 2. Zelená fajka v pravom dolnom rohu (použijeme ::before) */
+    &::before {
+      content: '✔';
+      position: absolute;
+
+      /* Pozícia: Dolu vpravo */
+      bottom: -8px;
+      right: -8px;
+
+      width: 16px;
+      height: 16px;
+      background-color: #16a34a;
+      /* Zelené pozadie guličky */
+      color: white;
+
+      border-radius: 50%;
+      border: 2px solid white;
+
+      font-size: 10px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      z-index: 11;
+    }
+  }
+}
+
+
+/* --- STÝLY PRE HLAVIČKU (Dni) --- */
+
+/* Víkend (Sobota, Nedeľa) */
+.weekend-header {
+  background-color: #f51811 !important;
+  opacity: 0.5;
+  /* Svetlosivá */
+  color: #64748b;
+}
+
+/* Sviatok (Má prednosť) */
+.holiday-header {
+  background-color: #cfbc7f !important;
+  /* Jemná červená */
+  color: #991b1b;
+  /* Tmavá červená pre text */
+  border-bottom: 2px solid #ef4444;
+  /* Červená čiara naspodku */
+}
+
+/* --- STÝLY PRE TELO TABUĽKY (Bunky) --- */
+
+/* Víkendová bunka */
+.weekend-cell {
+  background-color: #e2e8f0 !important;
+  /* Zmenené z f8fafc na tmavšiu sivú */
+  border-right: 1px solid #cbd5e1;
+  /* Jemný predel medzi dňami */
+}
+
+/* Sviatočná bunka */
+.holiday-cell {
+  background-color: #cfbc7f !important;
+  /* Sýtejšia červená (Red-100) */
+  color: #f3e9e9;
+  /* Tmavé písmo, ak by tam bol text */
+
+
+}
+
+/* Štatistické stĺpce */
+.stat-header {
+  background: #eef2ff;
+  font-size: 0.75rem;
+}
+
+.stat-cell {
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.small {
+  width: 30px;
+  font-size: 0.75rem;
+}
+
+.bg-highlight {
+  background-color: #fffbeb;
+}
+
+/* Žltý podklad pre total */
+
+.text-red {
+  color: #dc2626;
+  font-weight: bold;
+}
+
+.text-green {
+  color: #166534;
+  font-weight: bold;
+}
+
+.bold {
+  font-weight: 700;
+}
+
+
+/* Loading spinner */
+.loading-cell {
+  height: 200px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #64748b;
+  font-size: 1.2rem;
+}
+
+/* =========================================
+     3. MODAL (Vylepšený)
+     ========================================= */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  /* Širší modal pre viac prvkov */
+  max-height: 90vh;
+  /* Aby sa zmestil na obrazovku */
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: modalSlideIn 0.2s ease-out;
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    h3 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #1e293b;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      color: #64748b;
+    }
+  }
+
+  .modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    /* Obsah sa bude scrollovať ak je dlhý */
+    flex: 1;
+
+    .modal-info {
+      text-align: center;
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      color: #334155;
+
+      strong {
+        display: block;
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+      }
+    }
+  }
+
+  .modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    /* Delete vľavo, ostatné vpravo */
+    background: #f8fafc;
+    border-radius: 0 0 12px 12px;
+
+    .right-buttons {
+      display: flex;
+      gap: 10px;
+    }
+  }
+}
+
+/* Formulárové prvky v Modale */
+.form-group {
+  margin-bottom: 16px;
+
+  label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #475569;
+  }
+
+  input[type="text"],
+  input[type="time"],
+  textarea,
+  select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background-color: white;
+    transition: border-color 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    &:disabled {
+      background-color: #f1f5f9;
+      color: #94a3b8;
+    }
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+}
+
+.time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* --- NOVÉ SEKCIE (Checkboxy a Statusy) --- */
+
+.status-flags {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f1f5f9;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #334155;
+  user-select: none;
+
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #3b82f6;
+  }
+
+  span {
+    flex: 1;
+  }
+
+  &:hover {
+    color: #0f172a;
+  }
+}
+
+.text-danger {
+  color: #dc2626 !important;
+  font-weight: 600;
+}
+
+.debug-info {
+  text-align: right;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-bottom: 12px;
+  padding-top: 5px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+/* Tlačidlá */
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.9;
+  }
+
+  &-primary {
+    background: #3b82f6;
+    color: white;
+  }
+
+  &-secondary {
+    background: #e2e8f0;
+    color: #475569;
+  }
+
+  &-danger {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+@keyframes aggressive-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 0, 0, 0);
+    /* Červený kruh sa rozpíja */
+    transform: scale(1.05);
+    /* Jemné zväčšenie */
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+    transform: scale(1);
+  }
+}
+
+/* =========================================
+   VYLEPŠENÝ TIME EDITOR (MODERNÝ VZHĽAD)
+   ========================================= */
+
+.time-editor-wrapper {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  /* Väčšie zaoblenie */
+  padding: 20px;
+  /* Viac priestoru vo vnútri */
+  margin-bottom: 24px;
+  /* Odstup od spodných elementov */
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+  /* Jemný vnútorný tieň pre hĺbku */
+}
+
+.time-inputs-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  /* Väčšia medzera medzi Start a End blokmi */
+  margin-bottom: 20px;
+  /* Odstup od trvania */
+
+  .time-arrow {
+    font-size: 1.5rem;
+    color: #94a3b8;
+    margin-top: 28px;
+    /* Precízne zarovnanie so stredom inputov */
+    flex-shrink: 0;
+  }
+}
+
+.time-group {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+
+  label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    /* Jemne roztiahnuté písmo */
+    color: #64748b;
+    margin-bottom: 8px;
+    /* Viac miesta pod nadpisom */
+    font-weight: 700;
+  }
+
+  /* Indikátor +1 deň */
+  .next-day-label {
+    position: absolute;
+    bottom: -22px;
+    right: 0;
+    font-size: 0.75rem;
+    color: #d97706;
+    /* Pekná oranžová */
+    font-weight: 600;
+    background: #fffbeb;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #fcd34d;
+  }
+}
+
+/* --- KONTTAJNER PRE SELECTY (HH : MM) --- */
+.split-time-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  select {
+    width: 100%;
+    height: 42px;
+    /* Fixná výška pre konzistenciu */
+    padding: 0 12px;
+    padding-right: 25px;
+    /* Miesto pre šípku */
+
+    font-size: 1.1rem;
+    font-family: monospace;
+    /* Aby čísla neskákali */
+    font-weight: 600;
+    color: #334155;
+
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background-color: white;
+
+    /* Vlastná SVG šípka pre moderný vzhľad */
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 14px;
+
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+
+    &:hover:not(:disabled) {
+      border-color: #94a3b8;
+      background-color: #fcfcfc;
+    }
+
+    &:focus {
+      border-color: #3b82f6;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      /* Modrá žiara pri kliknutí */
+    }
+
+    &:disabled {
+      background-color: #e2e8f0;
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      cursor: not-allowed;
+      /* Pre disabled zmeníme šípku na sivú alebo ju skryjeme */
+      background-image: none;
+    }
+  }
+
+  .colon {
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #94a3b8;
+    margin-bottom: 2px;
+    /* Optické vycentrovanie */
+  }
+}
+
+/* --- BADGE PRE TRVANIE --- */
+.duration-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  background: #f0f9ff;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+
+  strong {
+    font-weight: 700;
+    font-size: 1rem;
+  }
+}
+
+/* --- RÝCHLE PREDVOĽBY (CHIPS) --- */
+.quick-presets {
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 16px;
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    /* Vycentrovanie tlačidiel */
+  }
+
+  .chip {
+    background: white;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    padding: 6px 14px;
+    border-radius: 20px;
+    /* Plne zaoblené "pill" tlačidlá */
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+    &:hover {
+      border-color: #3b82f6;
+      color: #3b82f6;
+      background: #eff6ff;
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+      background: #dbeafe;
+    }
+  }
+}
+</file>
+
+<file path="src/app/features/planner/planner.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Planner } from './planner';
+
+describe('Planner', () => {
+  let component: Planner;
+  let fixture: ComponentFixture<Planner>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Planner]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(Planner);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/features/planner/planner.ts">
+import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { Observable } from 'rxjs';
+
+import { AuthService } from '../../core/services/auth.service';
+import { NotificationService } from '../../core/services/notification.service';
+import { PlannedShift } from '../../shared/models/plannedShift.model';
+import { PlannerService } from '../../core/services/plannedShift.service';
+import { User } from '../../shared/models/user.model';
+import { TypeShift } from '../../shared/models/typeShift.model';
+import { TypeShiftService } from '../../core/services/tapeShift.service';
+import { HeaderComponent } from '../../core/components/header/header';
+import { ChangeReason } from '../../shared/models/changeReason.model';
+import { ChangeReasonService } from '../../core/services/changeReason.service';
+interface CalendarDay {
+  date: Date;
+  dayNum: number;
+  dayName: string;
+  isWeekend: boolean;
+  isHoliday: boolean;
+}
+
+interface EmployeeRow {
+  user_id: number;
+  fullName: string;
+  shifts: { [day: number]: PlannedShift | null };
+  stats: {
+    fund: number;
+    worked: number;
+    diff: number;
+    night: number;
+    weekend: number;
+    holiday: number;
+    prevBalance: number;
+    total: number;
+  };
+}
+
+@Component({
+  selector: 'app-planner',
+  standalone: true,
+  imports: [CommonModule, FormsModule, HeaderComponent],
+  templateUrl: './planner.html',
+  styleUrls: ['./planner.scss']
+})
+export class PlannerComponent implements OnInit {
+  changeReasons: ChangeReason[] = [];
+  // MODAL LOGIKA
+  isModalOpen = false;
+  shiftTypes: TypeShift[] = [];
+  currentDate = new Date();
+  daysInMonth: CalendarDay[] = [];
+  monthlyFund: number = 0;
+
+  employeeRows: EmployeeRow[] = [];
+  isLoading = false;
+  isManager = false;
+
+  showPrevMonthPreview = false;
+  prevMonthRows: EmployeeRow[] = [];
+
+
+  // Objekt, ktorý práve editujeme
+  selectedShift: Partial<PlannedShift> = {};
+  selectedRowUser: EmployeeRow | null = null;
+  selectedDay: CalendarDay | null = null;
+
+  // UI Flag: Môžem meniť čas?
+  canEditTime = false;
+
+  private plannerService = inject(PlannerService);
+  private authService = inject(AuthService);
+  private notify = inject(NotificationService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+  private changeReasonService = inject(ChangeReasonService);
+  private typeShiftService = inject(TypeShiftService)
+  ngOnInit() {
+
+    if (!this.authService.isAuthenticated()) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+
+    this.isManager = this.authService.isManager();
+
+
+    this.loadMonthData();
+
+    // 1. Načítame typy zmien pre select box
+    this.typeShiftService.getShiftTypes().subscribe(types => {
+      this.shiftTypes = types;
+    });
+    this.changeReasonService.getReasons().subscribe(reasons => {
+      this.changeReasons = reasons;
+    });
+  }
+
+  // 1. UPRAVENÁ METÓDA PRE NAČÍTANIE DÁT
+  loadMonthData() {
+    this.isLoading = true;
+    this.cdr.detectChanges();
+
+    const year = this.currentDate.getFullYear();
+    const month = this.currentDate.getMonth() + 1;
+
+    this.generateCalendarDays(year, month);
+
+    let usersRequest$: Observable<User[]>;
+    if (this.isManager) {
+      usersRequest$ = this.authService.getActiveUsers();
+    } else {
+      usersRequest$ = this.authService.getCurrentUserAsList();
+    }
+
+    // A. STIAHNEME PRACOVNÝ FOND
+    this.plannerService.getWorkingFund(year, month).subscribe({
+      next: (fundData) => {
+        this.monthlyFund = fundData.working_fund_hours;
+
+        // Spracovanie sviatkov (ak ich posielate)
+        const holidays = fundData.holidays || [];
+        this.daysInMonth = this.daysInMonth.map(day => ({
+          ...day,
+          isHoliday: holidays.includes(day.dayNum)
+        }));
+
+        // 👇 B. NOVÉ: STIAHNEME DYNAMICKÉ SALDÁ (Prepočítané stavy)
+        this.plannerService.getBalances(year, month).subscribe({
+          next: (balances) => {
+            // balances vyzerá takto: { 1: 10.5, 5: -2.0, ... } (kľúč je ID usera)
+
+            // C. Až teraz zavoláme funkciu na načítanie ľudí a pošleme jej aj saldá
+            this.fetchUsersAndShifts(year, month, usersRequest$, balances);
+          },
+          error: (err) => {
+            console.error('Nepodarilo sa načítať saldá, pokračujem s nulami.', err);
+            // Ak zlyhá načítanie sáld, pošleme prázdny objekt {}, čiže všetci budú mať 0
+            this.fetchUsersAndShifts(year, month, usersRequest$, {});
+          }
+        });
+      },
+      error: (err) => {
+        console.error('Nepodarilo sa načítať fond, používam fallback.', err);
+        const workingDays = this.daysInMonth.filter(d => !d.isWeekend).length;
+        this.monthlyFund = workingDays * 7.5;
+
+        // Fallback aj pre saldá - pošleme prázdny objekt
+        this.fetchUsersAndShifts(year, month, usersRequest$, {});
+      }
+    });
+  }
+
+  // 👇 Pridaný argument 'balances' typu objekt (kľúč=číslo, hodnota=číslo)
+  fetchUsersAndShifts(
+    year: number,
+    month: number,
+    usersRequest$: Observable<User[]>,
+    balances: { [key: number]: number }
+  ) {
+    usersRequest$.subscribe({
+      next: (users) => {
+        // Inicializácia riadkov pre zamestnancov
+        this.employeeRows = users.map(u => {
+
+          // 👇 ZMENA: Tu už neberieme statický 'initial_hours_balance' z profilu,
+          // ale dynamickú hodnotu z objektu 'balances', ktorú vypočítal backend pre tento mesiac.
+          // Ak sa ID nenájde (napr. nový user), použije sa 0.
+          const dynamicBalance = balances[u.id] || 0;
+
+          return {
+            user_id: u.id,
+            fullName: `${u.first_name} ${u.last_name}`.trim() || u.username,
+            shifts: {},
+
+            stats: {
+              fund: this.monthlyFund,
+              worked: 0,
+              diff: 0,
+              night: 0,
+              weekend: 0,
+              holiday: 0,
+
+              // 👇 Uložíme dynamické saldo
+              prevBalance: dynamicBalance,
+
+              // 👇 Total inicializujeme na toto saldo (prepočíta sa v calculateStats)
+              total: dynamicBalance
+            }
+          };
+        });
+
+        // Načítanie smien
+        this.plannerService.getShifts(year, month).subscribe({
+          next: (shifts) => {
+            this.distributeShiftsToRows(shifts);
+            this.calculateStats();
+
+            this.isLoading = false;
+            this.cdr.detectChanges();
+          },
+          error: () => {
+            this.isLoading = false;
+            this.notify.showError('Chyba pri načítaní zmien');
+            this.cdr.detectChanges();
+          }
+        });
+      },
+      error: () => {
+        this.isLoading = false;
+        this.notify.showError('Chyba pri načítaní zoznamu zamestnancov');
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // 2. UPRAVENÁ METÓDA VÝPOČTU (Aby neprepisovala fond)
+  calculateStats() {
+    // ⚠️ TENTO RIADOK SME ODSTRÁNILI (aby neprepisoval backend dáta):
+    // const workingDays = this.daysInMonth.filter(d => !d.isWeekend).length;
+    // this.monthlyFund = workingDays * 8; 
+
+    this.employeeRows.forEach(row => {
+      let worked = 0;
+      let night = 0;
+      let weekend = 0;
+
+      // Iterujeme cez dni v mesiaci (1..31)
+      for (let i = 1; i <= this.daysInMonth.length; i++) {
+        const shift = row.shifts[i];
+        if (shift && shift.duration) {
+          const [h, m] = shift.duration.split(':').map(Number);
+          const hours = h + (m / 60);
+          worked += hours;
+
+          // Víkendy
+          if (this.daysInMonth[i - 1].isWeekend) {
+            weekend += hours;
+          }
+
+          // Nočné (len hrubý odhad z frontendu, presne to ráta backend)
+          if (shift.short_name === 'Ns' || shift.shift_name?.includes('Nočná')) {
+            night += (hours > 8 ? 8 : hours);
+          }
+        }
+      }
+
+      // Uloženie štatistík do riadku
+      row.stats.fund = this.monthlyFund; // Fond z backendu
+      row.stats.worked = worked;
+      row.stats.diff = worked - this.monthlyFund; // Rozdiel
+      row.stats.total = row.stats.diff + row.stats.prevBalance;
+      row.stats.night = night;
+      row.stats.weekend = weekend;
+    });
+  }
+
+  distributeShiftsToRows(shifts: PlannedShift[]) {
+    shifts.forEach(shift => {
+      const day = new Date(shift.date).getDate();
+
+      const row = this.employeeRows.find(r => r.user_id === shift.user);
+      if (row) {
+        row.shifts[day] = shift;
+      }
+    });
+  }
+  getDayName(dayIndex: number): string {
+    const days = ['Ne', 'Po', 'Ut', 'St', 'Št', 'Pi', 'So'];
+    return days[dayIndex];
+  }
+  generateCalendarDays(year: number, month: number) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    this.daysInMonth = [];
+
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(year, month - 1, i);
+      const dayOfWeek = date.getDay();
+
+      this.daysInMonth.push({
+        dayNum: i,
+        dayName: this.getDayName(dayOfWeek),
+        isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+        isHoliday: false, // Defaultne false, doplníme z backendu
+        date: date
+      });
+    }
+  }
+
+
+
+  changeMonth(delta: number) {
+    this.currentDate = new Date(this.currentDate.setMonth(this.currentDate.getMonth() + delta));
+    this.loadMonthData();
+  }
+
+  prevMonth() { this.changeMonth(-1); }
+  nextMonth() { this.changeMonth(1); }
+
+  // --- OTVORENIE MODALU ---
+  onCellClick(row: EmployeeRow, day: CalendarDay) {
+    if (!this.isManager) return;
+
+    this.selectedRowUser = row;
+    this.selectedDay = day;
+
+    const existingShift = row.shifts[day.dayNum];
+    if (existingShift) {
+      this.selectedShift = { ...existingShift };
+    } else {
+      this.selectedShift = {
+        user: row.user_id,
+
+        // ✅ POUŽI NOVÚ FUNKCIU (Lokálny čas)
+        date: this.getLocalDateString(day.date),
+
+        type_shift: undefined
+      };
+    }
+
+    // ... zvyšok kódu
+    this.checkTimeEditable();
+    this.isModalOpen = true;
+  }
+
+
+  openShiftEdit(row: EmployeeRow, day: CalendarDay) {
+    this.onCellClick(row, day);
+
+    if (this.selectedShift.type_shift) {
+      const typeInfo = this.shiftTypes.find(t => t.id === this.selectedShift.type_shift);
+      // Ak typ existuje, riadime sa ním. Ak nie, default je true.
+      this.canEditTime = typeInfo ? typeInfo.allow_variable_time : true;
+    } else {
+      this.canEditTime = true;
+    }
+
+    this.isModalOpen = true;
+    this.parseTimeToSelects();
+    this.calculateDuration();
+    this.isModalOpen = true;
+  }
+
+  togglePrevMonthPreview() {
+    this.showPrevMonthPreview = !this.showPrevMonthPreview;
+    if (this.showPrevMonthPreview && this.prevMonthRows.length === 0) {
+      this.notify.showInfo('Náhľad minulého mesiaca zatiaľ nie je implementovaný.');
+    }
+  }
+
+  savePlan() {
+    if (this.isManager) {
+      this.notify.showSuccess('Plán bol uložený (Simulácia)');
+    }
+  }
+
+
+  onShiftTypeChange() {
+    const typeId = this.selectedShift.type_shift;
+    // Porovnanie == (nie ===) pre istotu (string vs number)
+    const type = this.shiftTypes.find(t => t.id == typeId);
+
+    if (type) {
+      // 1. Nastavíme, či sa dá editovať (podľa nastavenia v DB)
+      this.canEditTime = type.allow_variable_time;
+
+      if (this.canEditTime) {
+        // SCENÁR: Variabilná smena (napr. Inná činnosť)
+        // Vymažeme časy, aby tam neostal visieť čas z predošlého výberu.
+        // ⚠️ OPRAVA: Používame 'undefined' namiesto 'null'
+        this.selectedShift.custom_start = undefined;
+        this.selectedShift.custom_end = undefined;
+      } else {
+        // SCENÁR: Fixná smena (napr. Ranná, Dovolenka)
+        // Automaticky vyplníme čas z definície smeny
+
+        this.selectedShift.custom_start = type.start_time
+          ? type.start_time.substring(0, 5)
+          : undefined; // ⚠️ OPRAVA: undefined namiesto null
+
+        this.selectedShift.custom_end = type.end_time
+          ? type.end_time.substring(0, 5)
+          : undefined; // ⚠️ OPRAVA: undefined namiesto null
+      }
+
+    } else {
+      // Reset ak nie je vybraný typ
+      this.canEditTime = false;
+      // ⚠️ OPRAVA: undefined namiesto null
+      this.selectedShift.custom_start = undefined;
+      this.selectedShift.custom_end = undefined;
+    }
+
+    this.parseTimeToSelects();
+    this.calculateDuration();
+  }
+  // Pomocná metóda pri otvorení okna
+  checkTimeEditable() {
+    const type = this.shiftTypes.find(t => t.id == this.selectedShift.type_shift);
+    this.canEditTime = type ? type.allow_variable_time : false;
+  }
+
+  // --- ULOŽENIE ---
+  saveShift() {
+    if (!this.selectedShift.type_shift) {
+      this.notify.showError('Vyberte typ smeny');
+      return;
+    }
+
+    const payload = { ...this.selectedShift } as PlannedShift;
+
+    // Ak editujeme existujúcu (má ID) -> UPDATE
+    if (payload.id) {
+      this.plannerService.updateShift(payload.id, payload).subscribe({
+        next: (saved) => {
+          this.handleSaveSuccess(saved);
+        },
+        error: () => this.notify.showError('Chyba pri ukladaní')
+      });
+    }
+    // Ak tvoríme novú -> CREATE
+    else {
+      this.plannerService.createShift(payload).subscribe({
+        next: (saved) => {
+          this.handleSaveSuccess(saved);
+        },
+        error: (err) => {
+          // Backend vráti 400 ak je konflikt
+          this.notify.showError('Chyba: ' + (err.error?.non_field_errors?.[0] || 'Nepodarilo sa vytvoriť'));
+        }
+      });
+    }
+  }
+
+  handleSaveSuccess(shift: PlannedShift) {
+    setTimeout(() => {
+      this.notify.showSuccess('Uložené');
+      this.closeModal();    // Zmení isModalOpen (True -> False)
+      this.loadMonthData(); // Zmení isLoading (False -> True)
+    }, 0);
+  }
+
+  // --- MAZANIE ---
+  deleteShift() {
+    if (this.selectedShift.id && confirm('Naozaj vymazať túto smenu?')) {
+      this.plannerService.deleteShift(this.selectedShift.id).subscribe(() => {
+        this.notify.showInfo('Smena vymazaná');
+        this.closeModal();
+        setTimeout(() => {
+          this.loadMonthData();
+        });
+      });
+    }
+  }
+
+
+  closeModal() {
+    this.isModalOpen = false;
+    this.selectedShift = {};
+  }
+  private getLocalDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0'); // Mesiace sú 0-11
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+
+  hoursList: string[] = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')); // ["00", "01", ... "23"]
+  minutesList: string[] = ['00', '30']; // Iba celá a polhodina
+
+  // 2. Dočasné premenné pre Selecty (aby sme nekomplikovali ngModel)
+  tempStartH: string = '06';
+  tempStartM: string = '00';
+  tempEndH: string = '14';
+  tempEndM: string = '00';
+
+  // 3. Metóda: String "HH:MM" -> Rozhádže do selectov
+  // Volajte ju vždy, keď sa otvára modal alebo mení typ smeny!
+  parseTimeToSelects() {
+    const s = this.selectedShift.custom_start;
+    const e = this.selectedShift.custom_end;
+
+    if (s) {
+      const [h, m] = s.split(':');
+      this.tempStartH = h;
+      // Ak by náhodou bola v DB minúta 15, "zaokrúhlime" vizuálne na 00 alebo 30, alebo necháme tak
+      this.tempStartM = (m === '30') ? '30' : '00';
+    } else {
+      this.tempStartH = ''; // Alebo default
+      this.tempStartM = '';
+    }
+
+    if (e) {
+      const [h, m] = e.split(':');
+      this.tempEndH = h;
+      this.tempEndM = (m === '30') ? '30' : '00';
+    } else {
+      this.tempEndH = '';
+      this.tempEndM = '';
+    }
+  }
+
+  // 4. Metóda: Selecty -> String "HH:MM"
+  // Volá sa pri zmene dropdownu
+  updateTimeFromSelects(isStart: boolean) {
+    if (isStart) {
+      if (this.tempStartH && this.tempStartM) {
+        this.selectedShift.custom_start = `${this.tempStartH}:${this.tempStartM}`;
+      } else {
+        this.selectedShift.custom_start = undefined;
+      }
+    } else {
+      if (this.tempEndH && this.tempEndM) {
+        this.selectedShift.custom_end = `${this.tempEndH}:${this.tempEndM}`;
+      } else {
+        this.selectedShift.custom_end = undefined;
+      }
+    }
+
+    // Hneď prepočítame trvanie
+    this.calculateDuration();
+  }
+
+  // C. Keď kliknete na Rýchly výber (setPresetTime)
+  setPresetTime(start: string, end: string) {
+    this.selectedShift.custom_start = start;
+    this.selectedShift.custom_end = end;
+
+    // Musíme aktualizovať selecty, aby ukazovali novú hodnotu
+    this.parseTimeToSelects();
+    this.calculateDuration();
+  }
+  // =============================================
+  // CHÝBAJÚCE FUNKCIE PRE VÝPOČET ČASU
+  // =============================================
+
+  // Premenná na zobrazenie textu (napr. "8 hod. 30 min.")
+  computedDuration: string = '';
+
+  /**
+   * Vypočíta rozdiel medzi Start a End a uloží ho do computedDuration.
+   * Rieši aj prechod cez polnoc (ak je koniec menší ako začiatok).
+   */
+  calculateDuration() {
+    const s = this.selectedShift.custom_start;
+    const e = this.selectedShift.custom_end;
+
+    // Ak nemáme oba časy, vymažeme trvanie a končíme
+    if (!s || !e) {
+      this.computedDuration = '';
+      return;
+    }
+
+    // Rozparsovanie času "HH:MM" na čísla
+    const [startH, startM] = s.split(':').map(Number);
+    const [endH, endM] = e.split(':').map(Number);
+
+    // Prevod na minúty od začiatku dňa
+    const startMinutes = startH * 60 + startM;
+    let endMinutes = endH * 60 + endM;
+
+    // Logika pre polnoc: Ak je Koniec (06:00) menší ako Začiatok (22:00),
+    // znamená to, že je to ďalší deň => pripočítame 24 hodín (1440 minút).
+    if (endMinutes < startMinutes) {
+      endMinutes += 24 * 60;
+    }
+
+    const diffMinutes = endMinutes - startMinutes;
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+
+    // Formátovanie výstupu
+    this.computedDuration = `${hours} hod. ${minutes > 0 ? minutes + ' min.' : ''}`;
+  }
+
+  /**
+   * Pomocná funkcia pre HTML, či zobraziť nápis "+1 deň"
+   */
+  isNextDay(): boolean {
+    const s = this.selectedShift.custom_start;
+    const e = this.selectedShift.custom_end;
+    if (!s || !e) return false;
+
+    // Porovnanie stringov (napr. "06:00" < "22:00") funguje v JS správne
+    return e < s;
+  }
+}
+</file>
+
+<file path="src/app/shared/components/toast/toast.html">
+<div *ngIf="notification" 
+     class="toast" 
+     [ngClass]="notification.type"
+     (click)="close()">
+  
+  <span class="icon">
+    {{ notification.type === 'success' ? '✅' : (notification.type === 'error' ? '⚠️' : 'ℹ️') }}
+  </span>
+  
+  <span class="message">{{ notification.message }}</span>
+  
+  <button class="close-btn" (click)="close()">×</button>
+</div>
+</file>
+
+<file path="src/app/shared/components/toast/toast.scss">
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    min-width: 300px;
+    padding: 15px;
+    border-radius: 8px;
+    background: white;
+
+    /* Výrazný tieň */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    /* Musí byť nad všetkým ostatným */
+    z-index: 9999 !important;
+
+    /* Animácia príchodu */
+    animation: slideIn 0.3s ease-out;
+    cursor: pointer;
+
+    /* Farby podľa typu (vnorené pravidlá v SCSS) */
+    &.success {
+        border-left: 5px solid #4CAF50;
+        background: #E8F5E9;
+    }
+
+    &.error {
+        border-left: 5px solid #F44336;
+        background: #FFEBEE;
+    }
+
+    &.info {
+        border-left: 5px solid #2196F3;
+        background: #E3F2FD;
+    }
+}
+
+.message {
+    flex-grow: 1;
+    /* Aby text zaberal dostatok miesta */
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+}
+
+.close-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #666;
+
+    &:hover {
+        color: #000;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+</file>
+
+<file path="src/app/shared/components/toast/toast.spec.ts">
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Toast } from './toast';
+
+describe('Toast', () => {
+  let component: Toast;
+  let fixture: ComponentFixture<Toast>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Toast]
+    })
+    .compileComponents();
+
+    fixture = TestBed.createComponent(Toast);
+    component = fixture.componentInstance;
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+</file>
+
+<file path="src/app/shared/components/toast/toast.ts">
+import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { NotificationService, Notification } from '../../../core/services/notification.service';
+
+@Component({
+  selector: 'app-toast',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './toast.html',
+  styleUrls: ['./toast.scss']
+})
+export class ToastComponent implements OnInit {
+  notification: Notification | null = null;
+  private timeoutId: any;
+
+  // Injektujeme službu
+  private notificationService = inject(NotificationService);
+  private cdr = inject(ChangeDetectorRef);
+  ngOnInit() {
+    this.notificationService.notification$.subscribe(notif => {
+      // Pridáme log, aby si videl, či správa prišla
+      console.log('🔔 Toast prijal správu:', notif);
+
+      this.notification = notif;
+      this.cdr.detectChanges();
+      if (notif) {
+        // Reset časovača pri novej správe
+        clearTimeout(this.timeoutId);
+        // Zatvorenie po 4 sekundách
+        this.timeoutId = setTimeout(() => this.close(), 4000);
+      }
+    });
+  }
+
+  close() {
+    this.notification = null;
+    this.notificationService.clear();
+  }
+}
+</file>
+
+<file path="src/app/shared/models/employee.model.ts">
+export interface EmployeePayload {
+    id?: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    personal_number: string;
+    role: 'admin' | 'manager' | 'worker';
+    initial_hours_balance?: number;
+    password?: string;
+    is_active?: boolean; // 👈 PRIDANÉ
+}
+</file>
+
+<file path="src/app/shared/models/changeReason.model.ts">
+export interface ChangeReason {
+    id: number;
+    name: string;
+    description?: string;
+    category: 'absence' | 'cdr';
+}
+</file>
+
+<file path="src/app/shared/models/plannedShift.model.ts">
+import { TypeShift } from "./typeShift.model";
+
+
+
+export interface PlannedShift {
+    id?: number;
+    user: number; // ID zamestnanca
+    date: string; // YYYY-MM-DD
+    type_shift: number | TypeShift; // ID pri POST, Objekt pri GET
+    custom_start?: string;
+    custom_end?: string;
+    note?: string;
+    // Stavové polia
+    transferred?: boolean;    // Či už je v dochádzke
+    is_changed?: boolean;
+    hidden?: boolean;         // Soft delete
+
+    // Ostatné väzby
+    change_reason?: number | null;
+    calendar_day?: number | null;
+
+    // --- Read-only polia (ktoré posiela Serializer navyše) ---
+    shift_name?: string;      // napr. "Ranná zmena"
+    short_name?: string;      // napr. "R"
+    duration?: string;        // napr. "08:00"
+}
+
+export interface MonthlySummary {
+    user_id: number;
+    balance: number; // Prenesené hodiny z minulosti (+/-)
+}
+</file>
+
+<file path="src/app/shared/models/typeShift.model.ts">
+export interface TypeShift {
+    id: number;
+    nameShift: string;
+    shortName: string;
+    color: string;
+    start_time: string;
+    end_time: string;
+    duration_time: string;
+    allow_variable_time: boolean;
+}
+</file>
+
+<file path="src/app/shared/models/user.model.ts">
+export interface User {
+    id: number;
+    username: string;
+    role: 'manager' | 'worker' | 'admin';
+    personal_number: string;
+    first_name: string;
+    last_name: string;
+
+}
+
+export interface AuthResponse {
+    token: string;
+}
+
+// Toto je formát, v akom backend posiela dáta o userovi
+export interface CurrentUser {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+    email?: string;
+    role: 'admin' | 'manager' | 'worker';
+}
+</file>
+
+<file path="src/environments/environment.development.ts">
+export const environment = {
+    production: false,
+    apiUrl: 'http://127.0.0.1:8000/api/' // Tvoja lokálna adresa
+};
+</file>
+
+<file path="src/environments/environment.ts">
+export const environment = {
+    production: true,
+    apiUrl: 'https://api.moj-server.com' // Tu bude tvoja budúca ostrá doména
+};
+</file>
+
+<file path="src/index.html">
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WorkTrackWeb</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>
+</file>
+
+<file path="src/main.ts">
+import { bootstrapApplication } from '@angular/platform-browser';
+import { appConfig } from './app/app.config';
+import { App } from './app/app';
+
+bootstrapApplication(App, appConfig)
+  .catch((err) => console.error(err));
+</file>
+
+<file path="src/styles.scss">
+/* You can add global styles to this file, and also import other style files */
+</file>
+
+</files>

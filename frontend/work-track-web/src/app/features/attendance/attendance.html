@@ -1,0 +1,87 @@
+<app-header></app-header>
+<app-navigation></app-navigation>
+
+
+<div class="attendance-container">
+  
+  <div class="header-actions">
+    <h1>Moja Dochádzka</h1>
+
+    <div class="month-navigator">
+        <button class="nav-btn" (click)="changeMonth(-1)">◀</button>
+        <input type="month" [(ngModel)]="selectedPeriod" (change)="onPeriodChange()" class="month-input">
+        <button class="nav-btn" (click)="changeMonth(1)">▶</button>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" (click)="openAddModal()">➕ Zapísať</button>
+        <button class="btn btn-secondary" (click)="exportPdf()">📄 Export</button>
+    </div>
+  </div>
+
+  <div class="table-card">
+      <table class="styled-table">
+          <thead>
+              <tr>
+                  <th (click)="onSort('date')" class="sortable-header">Dátum {{ getSortIcon('date') }}</th>
+                  
+                  <th *ngIf="canViewEmployees" (click)="onSort('employee')" class="sortable-header">
+                      Zamestnanec {{ getSortIcon('employee') }}
+                  </th>
+                  
+                  <th (click)="onSort('shift')" class="sortable-header">Smena {{ getSortIcon('shift') }}</th>
+                  <th>Príchod</th>
+                  <th>Odchod</th>
+                  <th>Poznámka</th>
+              </tr>
+          </thead>
+          <tbody>
+              <tr *ngIf="isLoading()">
+                  <td [attr.colspan]="canViewEmployees ? 6 : 5" class="text-center loading-row">
+                      Načítavam dáta...
+                  </td>
+              </tr>
+
+              <tr *ngIf="!isLoading() && attendances().length === 0">
+                  <td [attr.colspan]="canViewEmployees ? 6 : 5" class="text-center">
+                      Žiadne záznamy pre tento mesiac.
+                  </td>
+              </tr>
+
+              <tr *ngFor="let att of attendances()">
+                  
+                  <td>
+                      <span class="date-badge">{{ att.date | date:'dd.MM.yyyy' }}</span>
+                  </td>
+
+                  <td *ngIf="canViewEmployees" class="font-bold">
+                      <div class="user-info">
+                        <span class="icon">👤</span> 
+                        {{ att.employee_name || att.user }} 
+                      </div>
+                  </td>
+
+                  <td>
+                      <span class="shift-badge" [ngClass]="att.shift_short || 'default'">
+                          {{ att.shift_name || '-' }}
+                      </span>
+                  </td>
+
+                  <td class="time-cell">{{ att.custom_start ? (att.custom_start | slice:0:5) : '-' }}</td>
+                  <td class="time-cell">{{ att.custom_end ? (att.custom_end | slice:0:5) : '-' }}</td>
+
+                  <td class="note-cell" [title]="att.note">
+                      {{ att.note || '' }}
+                  </td>
+              </tr>
+          </tbody>
+      </table>
+  </div>
+</div>
+
+<app-attendance-form 
+    [isOpen]="isModalOpen"
+    [userId]="currentUserId"
+    (close)="closeModal()"
+    (save)="onSaveAttendance($event)">
+</app-attendance-form>

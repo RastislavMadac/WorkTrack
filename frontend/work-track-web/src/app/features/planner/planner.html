@@ -1,0 +1,505 @@
+<app-header></app-header>
+
+<div class="planner-container">
+  
+  <div class="planner-header">
+    <div class="month-controls">
+      <button class="nav-btn" (click)="changeMonth(-1)" title="Predchádzajúci mesiac">
+        ◀
+      </button>
+      
+      <div class="date-display">
+        <h2>{{ currentDate | date:'MMMM yyyy':'':'sk' }}</h2>
+        <span class="fund-badge">Fond: {{ monthlyFund | number:'1.1-1' }} hod.</span>
+      </div>
+
+      <button class="nav-btn" (click)="changeMonth(1)" title="Nasledujúci mesiac">
+        ▶
+      </button>
+    </div>
+
+   
+    <div class="actions">
+      <button *ngIf="isManager" class="btn btn-warning" (click)="openCopyModal()">
+        📋 Kopírovať plán
+      </button>
+    </div>
+  </div>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-left col-name">Zamestnanec</th>
+          
+          <th *ngFor="let day of daysInMonth" 
+              class="col-day"
+              [class.weekend-header]="day.isWeekend && !day.isHoliday"
+              [class.holiday-header]="day.isHoliday"> 
+              
+              <div class="day-num">{{ day.dayNum }}.</div>
+              <div class="day-name">{{ day.dayName }}</div>
+          </th>
+
+          <th class="stat-header col-transfer">Pren.</th>
+          <th class="stat-header col-fond">Fond</th>
+          <th class="stat-header col-worked">Odpr.</th>
+          <th class="stat-header col-diff">Rozdiel</th>
+          <th class="stat-header col-total">Spolu</th>
+          
+          <th class="stat-header small">SV</th>
+          <th class="stat-header small">SN</th>
+          <th class="stat-header small">NS</th> 
+        </tr>
+      </thead>
+      
+      <tbody>
+        <tr *ngIf="isLoading">
+          <td [attr.colspan]="daysInMonth.length + 8" class="loading-cell">
+            <div class="spinner"></div> Načítavam dáta...
+          </td>
+        </tr>
+
+        <tr *ngFor="let row of employeeRows">
+          
+          <td class="sticky-left row-header">
+            <div class="user-name">{{ row.fullName }}</div>
+          </td>
+
+          <td *ngFor="let day of daysInMonth" 
+              class="cell-shift"
+              [class.weekend-cell]="day.isWeekend && !day.isHoliday"
+              [class.holiday-cell]="day.isHoliday"  (click)="openShiftEdit(row, day)">
+            
+            <ng-container *ngIf="row.shifts[day.dayNum] as shift">
+              <div class="shift-badge" 
+                   [ngClass]="shift.short_name || 'default'"
+                   [class.is-changed]="shift.is_changed"
+                   [class.is-transferred]="shift.transferred" 
+                   [class.status-pending]="shift.approval_status === 'pending'"
+                   [title]="(shift.shift_name || 'Smena') + (shift.transferred ? ' (V dochádzke)' : '')">
+                {{ shift.short_name || 'S' }}
+              </div>
+            </ng-container>
+            
+            <span *ngIf="!row.shifts[day.dayNum]" class="empty-placeholder"></span>
+          </td>
+
+          <td class="stat-cell text-muted bg-light">
+            {{ row.stats.prevBalance | number:'1.1-1' }}
+          </td>
+          <td class="stat-cell text-muted">{{ row.stats.fund | number:'1.1-1' }}</td>
+          <td class="stat-cell bold">{{ row.stats.worked | number:'1.1-1' }}</td>
+          
+          <td class="stat-cell" 
+              [class.text-red]="row.stats.diff < 0" 
+              [class.text-green]="row.stats.diff > 0">
+            {{ row.stats.diff > 0 ? '+' : '' }}{{ row.stats.diff | number:'1.1-1' }}
+          </td>
+          
+          <td class="stat-cell bg-highlight bold">{{ row.stats.total | number:'1.1-1' }}</td>
+
+          <td class="stat-cell small text-muted">{{ row.stats.holiday | number:'1.0-1' }}</td>
+          <td class="stat-cell small text-muted">{{ row.stats.weekend | number:'1.0-1' }}</td>
+          <td class="stat-cell small text-muted">{{ row.stats.night | number:'1.0-1' }}</td>
+
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-container *ngIf="isManager">
+      
+      <div class="section-divider"></div>
+
+      <div class="static-report-header">
+        <h3>Ročný prehľad a Sviatky </h3>
+      </div>
+
+      <div class="yearly-report-container">
+        
+        <div *ngIf="isYearlyReportLoading && !yearlyReport" class="loading-state">
+          <div class="spinner"></div> Načítavam ročný prehľad...
+        </div>
+
+        <div *ngIf="yearlyReport" class="report-content" [class.faded]="isYearlyReportLoading">
+          
+          <div class="table-scroll-wrapper">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="sticky-col first-col">Mesiac</th>
+                  <th *ngFor="let emp of yearlyReport.employees" colspan="6" class="emp-group-header">
+                    {{ emp.name }}
+                  </th>
+                </tr>
+                <tr>
+                  <ng-container *ngFor="let emp of yearlyReport.employees">
+                    <th class="metric-th">SO</th>
+                    <th class="metric-th">NE</th>
+                    <th class="metric-th sv-col">SV</th>
+                    <th class="metric-th">Noc</th>
+                    <th class="metric-th">Deň</th>
+                    <th class="metric-th pn-col">PN</th>
+                  </ng-container>
+                </tr>
+              </thead>
+              
+              <tbody>
+                
+                <tr *ngFor="let mIndex of monthsIndices; let i = index">
+                  <td class="sticky-col first-col month-name">{{ monthNames[i] }}</td>
+                  
+                  <ng-container *ngFor="let emp of yearlyReport.employees">
+                    <ng-container *ngIf="yearlyReport.matrix[emp.id]?.data?.[mIndex] as stats; else emptyCells">
+                      <td [class.bold-val]="stats.so > 0">{{ stats.so || '' }}</td>
+                      <td [class.bold-val]="stats.ne > 0">{{ stats.ne || '' }}</td>
+                      <td class="sv-bg">{{ stats.sv || '' }}</td>
+                      <td>{{ stats.noc || '' }}</td>
+                      <td>{{ stats.den | number:'1.0-1' }}</td>
+                      <td class="pn-text">{{ stats.pn > 0 ? 'PN' : '' }}</td>
+                    </ng-container>
+                    <ng-template #emptyCells>
+                      <td></td><td></td><td></td><td></td><td></td><td></td>
+                    </ng-template>
+                  </ng-container>
+                </tr>
+
+                <tr class="total-row">
+                    <td class="sticky-col first-col" style="font-weight: bold; background-color: #e9ecef;">SPOLU</td>
+                    
+                    <ng-container *ngFor="let emp of yearlyReport.employees">
+                      <ng-container *ngIf="yearlyReport.matrix[emp.id]?.data?.['total'] as totalStats; else emptyTotal">
+                        <td class="bold-val">{{ totalStats.so | number:'1.0-1' }}</td>
+                        <td class="bold-val">{{ totalStats.ne | number:'1.0-1' }}</td>
+                        <td class="sv-bg bold-val">{{ totalStats.sv | number:'1.0-1' }}</td>
+                        <td class="bold-val">{{ totalStats.noc | number:'1.0-1' }}</td>
+                        <td class="bold-val">{{ totalStats.den | number:'1.0-1' }}</td>
+                        <td class="pn-text bold-val">{{ totalStats.pn }}</td>
+                      </ng-container>
+                      
+                      <ng-template #emptyTotal>
+                        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                      </ng-template>
+                    </ng-container>
+                </tr>
+
+              </tbody> 
+              </table>
+          </div>
+
+          <div class="holidays-wrapper">
+            
+            <div class="holiday-box">
+              <h4>Sviatky {{ yearlyReport.year }} (Aktuálny)</h4>
+              <table class="report-table small-table">
+                <thead>
+                  <tr>
+                    <th>Dátum</th>
+                    <th *ngFor="let emp of yearlyReport.employees">{{ emp.name }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let h of yearlyReport.holidays_current">
+                    <td class="date-cell" [title]="h.name">
+                      {{ h.date | date:'dd.MM' }} 
+                      <small class="holiday-name-hint">{{ h.name | slice:0:15 }}</small>
+                    </td>
+                    <td *ngFor="let emp of yearlyReport.employees" [class.worked-holiday]="getHolidayHours(h, emp.id) !== '-'">
+                      {{ getHolidayHours(h, emp.id) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="holiday-box">
+              <h4>Sviatky {{ yearlyReport.year - 1 }} (Minulý)</h4>
+              <table class="report-table small-table faded-table">
+                <thead>
+                  <tr>
+                    <th>Dátum</th>
+                    <th *ngFor="let emp of yearlyReport.employees">{{ emp.name }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let h of yearlyReport.holidays_prev">
+                    <td class="date-cell" [title]="h.name">
+                      {{ h.date | date:'dd.MM' }}
+                      <small class="holiday-name-hint">{{ h.name | slice:0:15 }}</small>
+                    </td>
+                    <td *ngFor="let emp of yearlyReport.employees" [class.worked-holiday]="getHolidayHours(h, emp.id) !== '-'">
+                      {{ getHolidayHours(h, emp.id) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+  </ng-container> </div>
+
+<div class="modal-overlay" *ngIf="isModalOpen" (click)="closeModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    
+    <div class="modal-header">
+      <h3>Plánovanie smeny</h3>
+      <button class="close-btn" (click)="closeModal()">✖</button>
+    </div>
+
+    <div class="modal-body">
+      
+      <p class="modal-info">
+        <strong>{{ selectedRowUser?.fullName }}</strong> <br>
+        {{ selectedDay?.date | date:'dd.MM.yyyy (EEEE)':'':'sk' }}
+      </p>
+
+      <div class="manager-approval-panel" 
+           *ngIf="isManager && selectedShift.approval_status === 'pending' && selectedShift.exchange_link"
+           style="background: #fff7ed; padding: 15px; border: 1px solid #fdba74; margin-bottom: 20px; border-radius: 8px;">
+        
+        <h4 style="margin-top:0; color: #9a3412;">⏳ Čaká na schválenie</h4>
+        <p style="margin-bottom: 10px; font-size: 0.9rem;">Toto je návrh výmeny smeny.</p>
+        
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-primary" style="background: #16a34a; border: none; color: white;" (click)="decideExchange('approved')">
+                Schváliť ✅
+            </button>
+            <button class="btn btn-danger" (click)="decideExchange('rejected')">
+                Zamietnuť ❌
+            </button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Typ smeny</label>
+        <select [(ngModel)]="selectedShift.type_shift" 
+                (change)="onShiftTypeChange()"
+                [disabled]="!canEditDetails">
+          <option [ngValue]="null">-- Vyberte smenu --</option>
+          <option *ngFor="let type of shiftTypes" [ngValue]="type.id">
+            {{ type.nameShift }} ({{ type.shortName }})
+          </option>
+        </select>
+      </div>
+
+      <div class="time-editor-wrapper">
+  
+        <div class="time-inputs-row">
+          
+          <div class="time-group">
+            <label>Začiatok</label>
+            <div class="split-time-inputs">
+              <select [(ngModel)]="tempStartH" 
+                      (change)="updateTimeFromSelects(true)" 
+                      [disabled]="!canEditDetails">
+                <option value="" disabled>--</option>
+                <option *ngFor="let h of hoursList" [value]="h">{{ h }}</option>
+              </select>
+              
+              <span class="colon">:</span>
+              
+              <select [(ngModel)]="tempStartM" 
+                      (change)="updateTimeFromSelects(true)" 
+                      [disabled]="!canEditDetails">
+                <option value="" disabled>--</option>
+                <option *ngFor="let m of minutesList" [value]="m">{{ m }}</option>
+              </select>
+            </div>
+          </div>
+      
+          <div class="time-arrow">➝</div>
+      
+          <div class="time-group">
+            <label>Koniec</label>
+            <div class="split-time-inputs">
+              <select [(ngModel)]="tempEndH" 
+                      (change)="updateTimeFromSelects(false)" 
+                      [disabled]="!canEditDetails">
+                <option value="" disabled>--</option>
+                <option *ngFor="let h of hoursList" [value]="h">{{ h }}</option>
+              </select>
+              
+              <span class="colon">:</span>
+              
+              <select [(ngModel)]="tempEndM" 
+                      (change)="updateTimeFromSelects(false)" 
+                      [disabled]="!canEditDetails">
+                <option value="" disabled>--</option>
+                <option *ngFor="let m of minutesList" [value]="m">{{ m }}</option>
+              </select>
+            </div>
+      
+            <small class="next-day-label" *ngIf="isNextDay()">+1 deň</small>
+          </div>
+      
+        </div>
+      
+        <div class="duration-badge" *ngIf="selectedShift.custom_start && selectedShift.custom_end">
+          ⏱️ Trvanie: <strong>{{ computedDuration }}</strong>
+        </div>
+      
+        <div class="quick-presets" *ngIf="canEditDetails">
+          <div class="chips">
+            <button class="chip" (click)="setPresetTime('06:00', '14:00')">06:00 - 14:00</button>
+            <button class="chip" (click)="setPresetTime('06:00', '18:00')">06:00 - 18:00</button>
+            <button class="chip" (click)="setPresetTime('14:00', '22:00')">14:00 - 22:00</button>
+            <button class="chip" (click)="setPresetTime('22:00', '06:00')">22:00 - 06:00</button>
+          </div>
+        </div>
+      
+      </div>
+      
+      <div class="form-group">
+        <label>Dôvod zmeny / Absencie</label>
+        <select [(ngModel)]="selectedShift.change_reason" [disabled]="!canEditDetails || isExchangeMode">
+          <option [ngValue]="null">-- Žiadny dôvod --</option>
+          <option *ngFor="let reason of changeReasons" [ngValue]="reason.id">
+            {{ reason.name }} ({{ reason.category }})
+          </option>
+        </select>
+      </div>
+
+      <div class="exchange-section" 
+           *ngIf="canRequestExchange" 
+           style="margin-bottom: 15px;">
+        
+        <div class="exchange-toggle" style="margin-bottom: 10px;">
+          <label class="checkbox-label" style="font-weight: bold; color: #3b82f6;">
+            <input type="checkbox" 
+                   [(ngModel)]="isExchangeMode" 
+                   (change)="onExchangeModeChange()">
+            🔄 Chcem požiadať o výmenu smeny
+          </label>
+        </div>
+
+        <div class="exchange-panel" *ngIf="isExchangeMode"
+             style="background: #eef2ff; padding: 15px; border-radius: 8px; border: 1px solid #c7d2fe;">
+             
+             <h4 style="margin-top:0; color: #3730a3; font-size: 0.95rem;">Vybrať náhradníka</h4>
+             
+             <div class="form-group">
+               <select [(ngModel)]="selectedExchangeUser" style="width: 100%; padding: 8px; border-radius: 6px;">
+                   <option [ngValue]="null">-- Vyberte kolegu --</option>
+                   
+                   <option *ngFor="let col of exchangeCandidates" [ngValue]="col.id">
+                       {{ col.first_name }} {{ col.last_name }}
+                   </option>
+
+               </select>
+           </div>
+
+             <p class="small-hint" style="font-size: 0.8rem; color: #666; margin-top: 8px;">
+                 ⚠️ Vaša smena bude skrytá a vytvorí sa návrh pre vybraného kolegu.
+             </p>
+
+             <button class="btn btn-primary" 
+                     style="width: 100%; margin-top: 10px; background-color: #4f46e5;" 
+                     (click)="requestExchange()">
+                 Odoslať žiadosť 📨
+             </button>
+         </div>
+      </div>
+
+      <div class="status-flags" *ngIf="canEditDetails">
+        <label class="checkbox-label" title="Smena už bola preklopená do dochádzky">
+          <input type="checkbox" [(ngModel)]="selectedShift.transferred">
+          <span>V dochádzke (Transferred)</span>
+        </label>
+
+        <label class="checkbox-label" title="Smena sa líši od predvoleného plánu">
+          <input type="checkbox" [(ngModel)]="selectedShift.is_changed">
+          <span>Zmenená (Is Changed)</span>
+        </label>
+
+        <label class="checkbox-label text-danger" title="Soft delete - smena sa nebude rátať">
+          <input type="checkbox" [(ngModel)]="selectedShift.hidden">
+          <span>Skrytá / Zmazaná (Hidden)</span>
+        </label>
+      </div>
+
+      <div class="debug-info" *ngIf="selectedShift.id">
+        <small class="text-muted">
+          ID: {{ selectedShift.id }} | 
+          Status: {{ selectedShift.approval_status }} |
+          CalendarDay ID: {{ selectedShift.calendar_day || 'N/A' }}
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label>Poznámka</label>
+        <textarea [(ngModel)]="selectedShift.note" rows="2" [disabled]="!canEditDetails"></textarea>
+      </div>
+
+    </div>
+
+    <div class="modal-footer" *ngIf="!isExchangeMode">
+      <button *ngIf="selectedShift.id && canEditDetails" class="btn btn-danger" (click)="deleteShift()">
+        Vymazať 🗑️
+      </button>
+      
+      <div class="right-buttons">
+        <button class="btn btn-secondary" (click)="closeModal()">Zrušiť</button>
+        <button *ngIf="canEditDetails" class="btn btn-primary" (click)="saveShift()">Uložiť ✅</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="isCopyModalOpen" (click)="closeCopyModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    
+    <div class="modal-header">
+      <h3>Kopírovanie plánu</h3>
+      <button class="close-btn" (click)="closeCopyModal()">✖</button>
+    </div>
+
+    <div class="modal-body">
+      <p class="text-muted">
+        Táto funkcia skopíruje všetky smeny z vybraného mesiaca do cieľového mesiaca. 
+        <br><strong>Pozor:</strong> Existujúce smeny v cieľovom mesiaci ostanú zachované (neprepíšu sa).
+      </p>
+
+      <div class="copy-row">
+        <div class="copy-group">
+          <label>ZDROJ (Odkiaľ)</label>
+          <div class="flex-inputs">
+            <select [(ngModel)]="copySourceMonth">
+              <option *ngFor="let m of monthsList" [value]="m.value">{{ m.name }}</option>
+            </select>
+            <select [(ngModel)]="copySourceYear">
+              <option *ngFor="let y of yearsList" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="arrow-separator">➝</div>
+
+        <div class="copy-group">
+          <label>CIEĽ (Kam)</label>
+          <div class="flex-inputs">
+            <select [(ngModel)]="copyTargetMonth">
+              <option *ngFor="let m of monthsList" [value]="m.value">{{ m.name }}</option>
+            </select>
+            <select [(ngModel)]="copyTargetYear">
+              <option *ngFor="let y of yearsList" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeCopyModal()">Zrušiť</button>
+      <button class="btn btn-primary" (click)="submitCopy()">
+        Spustiť kopírovanie 🚀
+      </button>
+    </div>
+
+  </div>
+</div>

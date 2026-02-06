@@ -1,0 +1,95 @@
+<div class="modal-overlay" *ngIf="isOpen" (click)="onClose()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    
+    <div class="modal-header">
+      <h2>📝 Zapísať dochádzku</h2>
+      <button class="close-btn" (click)="onClose()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      
+      <div class="form-section highlight-bg" *ngIf="canSelectUser">
+          <label>Zamestnanec</label>
+          <select [ngModel]="userId" (ngModelChange)="onUserChange($event)" class="modern-input user-select">
+              <option *ngFor="let u of users" [value]="u.id">
+                  {{ u.first_name }} {{ u.last_name }} ({{ u.username }})
+              </option>
+          </select>
+      </div>
+
+      <div class="form-section">
+        <label>Dátum</label>
+        
+        <input type="date" 
+               [(ngModel)]="formDate" 
+               (change)="onDateChange()" 
+               class="modern-input"
+               [disabled]="!!selectedPlanId"
+               title="Ak chcete zmeniť dátum, zrušte výber plánu nižšie">
+        
+        <div class="plan-selector" *ngIf="availablePlans.length > 0">
+           <label class="small-label">Dostupné plány pre tento deň:</label>
+           
+           <select [(ngModel)]="selectedPlanId" (change)="onPlanSelectChange()" class="plan-dropdown">
+              <option [ngValue]="null">-- Bez väzby na plán (Vytvoriť nový) --</option>
+              
+              <option *ngFor="let plan of availablePlans" [ngValue]="plan.id">
+                 🕒 {{ plan.shift_name || 'Smena' }} ({{ plan.custom_start | slice:0:5 }} - {{ plan.custom_end | slice:0:5 }})
+              </option>
+           </select>
+           
+           <div class="status-badge success" *ngIf="selectedPlanId">
+              Linked ✅
+           </div>
+        </div>
+
+        <div *ngIf="availablePlans.length === 0" class="plan-badge not-found">
+           ⚠️ Žiadny otvorený plán na tento deň (Vytvárate záznam mimo plánu)
+        </div>
+      </div>
+
+      <div class="grid-row">
+        <div class="form-group">
+          <label>Typ smeny</label>
+          <select [(ngModel)]="selectedTypeId" class="modern-input">
+            <option [ngValue]="null">-- Vyberte --</option>
+            <option *ngFor="let t of shiftTypes" [value]="t.id">{{ t.nameShift }}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Príchod</label>
+          <input type="time" [(ngModel)]="formStart" (change)="checkDiff()" class="modern-input">
+        </div>
+
+        <div class="form-group">
+          <label>Odchod</label>
+          <input type="time" [(ngModel)]="formEnd" (change)="checkDiff()" class="modern-input">
+        </div>
+      </div>
+
+      <div class="reason-section" [class.visible]="isTimeChanged">
+        <div class="info-text">
+          🕒 Časy sa líšia od vybraného plánu (alebo plán chýba). Prosím, uveďte dôvod.
+        </div>
+        <label>Dôvod zmeny *</label>
+        <select [(ngModel)]="selectedReasonId" class="modern-input highlight">
+          <option [ngValue]="null">-- Vyberte dôvod --</option>
+          <option *ngFor="let r of reasons" [value]="r.id">{{ r.name }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Poznámka</label>
+        <textarea [(ngModel)]="formNote" rows="2" class="modern-input" placeholder="Voliteľná poznámka..."></textarea>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" (click)="onClose()">Zrušiť</button>
+      <button class="btn btn-primary" (click)="onSave()">Uložiť Záznam</button>
+    </div>
+
+  </div>
+</div>

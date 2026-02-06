@@ -1,0 +1,23 @@
+<header *ngIf="isLoggedIn" class="app-header">
+  
+    <div class="brand" routerLink="/planner">
+      <div class="logo-circle">WT</div>
+      <span class="app-name">WorkTrack</span>
+    </div>
+  
+    <div class="user-controls">
+      
+      <div class="user-info">
+        <span class="greeting">Ahoj,</span>
+        <span class="username">{{ username }}</span>
+      </div>
+  
+      <button class="logout-btn" (click)="logout()" title="Odhlásiť sa">
+        Odhlásiť 🚪
+      </button>
+      
+    </div>
+   
+  </header>
+
+  <app-navigation></app-navigation>

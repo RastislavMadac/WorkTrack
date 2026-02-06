@@ -1,0 +1,197 @@
+/* 1. Celkové pozadie stránky */
+.login-wrapper {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* Moderný gradient (Modrá -> Fialová) */
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* 2. Karta prihlásenia */
+.login-card {
+    background: white;
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05), 0 5px 10px rgba(0, 0, 0, 0.03);
+    transition: transform 0.3s ease;
+}
+
+/* 3. Typografia */
+.card-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.card-header h1 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.card-header p {
+    margin: 10px 0 0;
+    color: #7f8c8d;
+    font-size: 0.95rem;
+}
+
+/* 4. Inputy a Label */
+.form-group {
+    margin-bottom: 1.2rem;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    color: #34495e;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.input-container {
+    position: relative;
+}
+
+input {
+    width: 100%;
+    padding: 12px 40px 12px 15px;
+    /* Priestor pre ikonu vpravo */
+    border: 2px solid #eef2f7;
+    background-color: #f8fafc;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+    /* Dôležité aby padding nerozbil šírku */
+    color: #2c3e50;
+}
+
+input::placeholder {
+    color: #bdc3c7;
+}
+
+/* Efekt po kliknutí do inputu */
+input:focus {
+    outline: none;
+    border-color: #3498db;
+    background-color: white;
+    box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
+}
+
+/* Chyba v inpute */
+input.error-border {
+    border-color: #e74c3c;
+    background-color: #fdf2f2;
+}
+
+input.error-border:focus {
+    box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.1);
+}
+
+.icon {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.1rem;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* 5. Tlačidlo */
+.login-btn {
+    width: 100%;
+    padding: 14px;
+    margin-top: 10px;
+    background: linear-gradient(to right, #2980b9, #3498db);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+}
+
+.login-btn:active {
+    transform: translateY(0);
+}
+
+.login-btn:disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 6. Chybová hláška text */
+.error-text {
+    color: #e74c3c;
+    font-size: 0.85rem;
+    text-align: center;
+    margin-top: 1rem;
+    background: #fdf2f2;
+    padding: 8px;
+    border-radius: 6px;
+    animation: fadeIn 0.3s ease;
+}
+
+/* 7. Pätička */
+.card-footer {
+    text-align: center;
+    margin-top: 2rem;
+    color: #bdc3c7;
+}
+
+/* Animácie */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Jednoduchý loader krúžok */
+.loader {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Mobilné zobrazenie */
+@media (max-width: 480px) {
+    .login-card {
+        padding: 1.5rem;
+        margin: 20px;
+    }
+
+    .card-header h1 {
+        font-size: 1.5rem;
+    }
+}

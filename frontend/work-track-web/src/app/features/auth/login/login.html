@@ -1,0 +1,57 @@
+<div class="login-wrapper">
+    <div class="login-card">
+      
+      <div class="card-header">
+        <h1>WorkTrack</h1>
+        <p>Vitajte späť! Prosím, prihláste sa.</p>
+      </div>
+
+      <div class="form-content">
+        
+        <div class="form-group">
+          <label for="username">Prihlasovacie meno</label>
+          <div class="input-container">
+            <input 
+              id="username"
+              [(ngModel)]="username" 
+              (keyup.enter)="onLogin()"
+              type="text" 
+              placeholder="napr. janko.mrkvicka"
+              [class.error-border]="errorMessage"
+            >
+            <span class="icon">👤</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Heslo</label>
+          <div class="input-container">
+            <input 
+              id="password"
+              [(ngModel)]="password" 
+              (keyup.enter)="onLogin()"
+              type="password" 
+              placeholder="••••••••"
+              [class.error-border]="errorMessage"
+            >
+            <span class="icon">🔒</span>
+          </div>
+        </div>
+
+        <button (click)="onLogin()" [disabled]="isLoading" class="login-btn">
+          <span *ngIf="!isLoading">Prihlásiť sa</span>
+          <span *ngIf="isLoading" class="loader"></span>
+        </button>
+
+        <p class="error-text" *ngIf="errorMessage">
+          {{ errorMessage }}
+        </p>
+
+      </div>
+      
+      <div class="card-footer">
+        <small>© 2026 WorkTrack System</small>
+      </div>
+
+    </div>
+  </div>

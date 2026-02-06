@@ -1,0 +1,72 @@
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    min-width: 300px;
+    padding: 15px;
+    border-radius: 8px;
+    background: white;
+
+    /* Výrazný tieň */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    /* Musí byť nad všetkým ostatným */
+    z-index: 9999 !important;
+
+    /* Animácia príchodu */
+    animation: slideIn 0.3s ease-out;
+    cursor: pointer;
+
+    /* Farby podľa typu (vnorené pravidlá v SCSS) */
+    &.success {
+        border-left: 5px solid #4CAF50;
+        background: #E8F5E9;
+    }
+
+    &.error {
+        border-left: 5px solid #F44336;
+        background: #FFEBEE;
+    }
+
+    &.info {
+        border-left: 5px solid #2196F3;
+        background: #E3F2FD;
+    }
+}
+
+.message {
+    flex-grow: 1;
+    /* Aby text zaberal dostatok miesta */
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+}
+
+.close-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #666;
+
+    &:hover {
+        color: #000;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
